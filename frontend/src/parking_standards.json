@@ -1,242 +1,282 @@
 {
-  "IBC_2024": {
-    "label": "IBC 2024 (US)",
-    "circulation": {
-      "driveAisleWidthTwoWay": 6.0,
-      "driveAisleWidthOneWay": 3.6,
-      "fireLaneWidth": 6.1,
-      "accessLaneWidth": 3.6,
-      "turningRadiusMin": 7.6,
-      "entryLaneWidth": 3.6,
-      "exitLaneWidth": 3.6
+    "IBC_2024": {
+        "label": "IBC 2024 (US)",
+        "circulation": {
+            "driveAisleWidthTwoWay": 6.0,
+            "driveAisleWidthOneWay": 3.6,
+            "fireLaneWidth": 6.1,
+            "accessLaneWidth": 3.6,
+            "turningRadiusMin": 7.6,
+            "entryLaneWidth": 3.6,
+            "exitLaneWidth": 3.6
+        },
+        "stalls": {
+            "standardWidth": 2.6,
+            "standardDepth": 5.5,
+            "compactWidth": 2.4,
+            "compactDepth": 4.6,
+            "accessibleWidth": 3.6,
+            "accessibleDepth": 5.5,
+            "accessibleAisleWidth": 1.5,
+            "accessibleRatio": 0.02
+        },
+        "angles": [
+            90,
+            60,
+            45
+        ],
+        "notes": "Based on IBC 2024 and ADA Standards for Accessible Design"
     },
-    "stalls": {
-      "standardWidth": 2.6,
-      "standardDepth": 5.5,
-      "compactWidth": 2.4,
-      "compactDepth": 4.6,
-      "accessibleWidth": 3.6,
-      "accessibleDepth": 5.5,
-      "accessibleAisleWidth": 1.5,
-      "accessibleRatio": 0.02
+    "NFPA_101_2024": {
+        "label": "NFPA 101 (2024 US)",
+        "circulation": {
+            "driveAisleWidthTwoWay": 6.0,
+            "driveAisleWidthOneWay": 3.6,
+            "fireLaneWidth": 6.1,
+            "accessLaneWidth": 3.6,
+            "turningRadiusMin": 7.6,
+            "entryLaneWidth": 3.6,
+            "exitLaneWidth": 3.6
+        },
+        "stalls": {
+            "standardWidth": 2.6,
+            "standardDepth": 5.5,
+            "compactWidth": 2.4,
+            "compactDepth": 4.6,
+            "accessibleWidth": 3.6,
+            "accessibleDepth": 5.5,
+            "accessibleAisleWidth": 1.5,
+            "accessibleRatio": 0.02
+        },
+        "angles": [
+            90,
+            60,
+            45
+        ],
+        "notes": "Based on NFPA 101 Life Safety Code 2024"
     },
-    "angles": [90, 60, 45],
-    "notes": "Based on IBC 2024 and ADA Standards for Accessible Design"
-  },
-  "NFPA_101_2024": {
-    "label": "NFPA 101 (2024 US)",
-    "circulation": {
-      "driveAisleWidthTwoWay": 6.0,
-      "driveAisleWidthOneWay": 3.6,
-      "fireLaneWidth": 6.1,
-      "accessLaneWidth": 3.6,
-      "turningRadiusMin": 7.6,
-      "entryLaneWidth": 3.6,
-      "exitLaneWidth": 3.6
+    "UK_ADB_2023": {
+        "label": "UK Approved Document B (2023)",
+        "circulation": {
+            "driveAisleWidthTwoWay": 6.0,
+            "driveAisleWidthOneWay": 3.7,
+            "fireLaneWidth": 6.0,
+            "accessLaneWidth": 3.7,
+            "turningRadiusMin": 7.0,
+            "entryLaneWidth": 3.7,
+            "exitLaneWidth": 3.7
+        },
+        "stalls": {
+            "standardWidth": 2.4,
+            "standardDepth": 4.8,
+            "compactWidth": 2.4,
+            "compactDepth": 4.2,
+            "accessibleWidth": 3.6,
+            "accessibleDepth": 4.8,
+            "accessibleAisleWidth": 1.2,
+            "accessibleRatio": 0.06
+        },
+        "angles": [
+            90,
+            60,
+            45
+        ],
+        "notes": "Based on UK Building Regulations Approved Document B and BS 8300"
     },
-    "stalls": {
-      "standardWidth": 2.6,
-      "standardDepth": 5.5,
-      "compactWidth": 2.4,
-      "compactDepth": 4.6,
-      "accessibleWidth": 3.6,
-      "accessibleDepth": 5.5,
-      "accessibleAisleWidth": 1.5,
-      "accessibleRatio": 0.02
+    "CAN_NBC_2020": {
+        "label": "Canada NBC 2020",
+        "circulation": {
+            "driveAisleWidthTwoWay": 6.0,
+            "driveAisleWidthOneWay": 3.5,
+            "fireLaneWidth": 6.0,
+            "accessLaneWidth": 3.5,
+            "turningRadiusMin": 7.5,
+            "entryLaneWidth": 3.5,
+            "exitLaneWidth": 3.5
+        },
+        "stalls": {
+            "standardWidth": 2.6,
+            "standardDepth": 5.5,
+            "compactWidth": 2.4,
+            "compactDepth": 4.6,
+            "accessibleWidth": 3.4,
+            "accessibleDepth": 5.5,
+            "accessibleAisleWidth": 1.5,
+            "accessibleRatio": 0.02
+        },
+        "angles": [
+            90,
+            60,
+            45
+        ],
+        "notes": "Based on National Building Code of Canada 2020"
     },
-    "angles": [90, 60, 45],
-    "notes": "Based on NFPA 101 Life Safety Code 2024"
-  },
-  "UK_ADB_2023": {
-    "label": "UK Approved Document B (2023)",
-    "circulation": {
-      "driveAisleWidthTwoWay": 6.0,
-      "driveAisleWidthOneWay": 3.7,
-      "fireLaneWidth": 6.0,
-      "accessLaneWidth": 3.7,
-      "turningRadiusMin": 7.0,
-      "entryLaneWidth": 3.7,
-      "exitLaneWidth": 3.7
+    "EURO_GENERIC": {
+        "label": "European (Generic)",
+        "circulation": {
+            "driveAisleWidthTwoWay": 6.0,
+            "driveAisleWidthOneWay": 3.5,
+            "fireLaneWidth": 6.0,
+            "accessLaneWidth": 3.5,
+            "turningRadiusMin": 6.0,
+            "entryLaneWidth": 3.5,
+            "exitLaneWidth": 3.5
+        },
+        "stalls": {
+            "standardWidth": 2.5,
+            "standardDepth": 5.0,
+            "compactWidth": 2.3,
+            "compactDepth": 4.5,
+            "accessibleWidth": 3.5,
+            "accessibleDepth": 5.0,
+            "accessibleAisleWidth": 1.5,
+            "accessibleRatio": 0.04
+        },
+        "angles": [
+            90,
+            75,
+            60,
+            45
+        ],
+        "notes": "Generic European standards based on EN 14904 and common practice"
     },
-    "stalls": {
-      "standardWidth": 2.4,
-      "standardDepth": 4.8,
-      "compactWidth": 2.4,
-      "compactDepth": 4.2,
-      "accessibleWidth": 3.6,
-      "accessibleDepth": 4.8,
-      "accessibleAisleWidth": 1.2,
-      "accessibleRatio": 0.06
+    "AUS_NZ_GENERIC": {
+        "label": "Australia/NZ (Generic)",
+        "circulation": {
+            "driveAisleWidthTwoWay": 6.2,
+            "driveAisleWidthOneWay": 3.5,
+            "fireLaneWidth": 6.0,
+            "accessLaneWidth": 3.5,
+            "turningRadiusMin": 6.5,
+            "entryLaneWidth": 3.5,
+            "exitLaneWidth": 3.5
+        },
+        "stalls": {
+            "standardWidth": 2.5,
+            "standardDepth": 5.4,
+            "compactWidth": 2.3,
+            "compactDepth": 4.8,
+            "accessibleWidth": 3.8,
+            "accessibleDepth": 5.4,
+            "accessibleAisleWidth": 2.4,
+            "accessibleRatio": 0.02
+        },
+        "angles": [
+            90,
+            60,
+            45
+        ],
+        "notes": "Based on AS/NZS 2890.1 and AS/NZS 2890.6"
     },
-    "angles": [90, 60, 45],
-    "notes": "Based on UK Building Regulations Approved Document B and BS 8300"
-  },
-  "CAN_NBC_2020": {
-    "label": "Canada NBC 2020",
-    "circulation": {
-      "driveAisleWidthTwoWay": 6.0,
-      "driveAisleWidthOneWay": 3.5,
-      "fireLaneWidth": 6.0,
-      "accessLaneWidth": 3.5,
-      "turningRadiusMin": 7.5,
-      "entryLaneWidth": 3.5,
-      "exitLaneWidth": 3.5
+    "IND_NBC_2016": {
+        "label": "India NBC 2016",
+        "circulation": {
+            "driveAisleWidthTwoWay": 6.0,
+            "driveAisleWidthOneWay": 3.5,
+            "fireLaneWidth": 6.0,
+            "accessLaneWidth": 3.5,
+            "turningRadiusMin": 6.0,
+            "entryLaneWidth": 3.5,
+            "exitLaneWidth": 3.5
+        },
+        "stalls": {
+            "standardWidth": 2.5,
+            "standardDepth": 5.0,
+            "compactWidth": 2.3,
+            "compactDepth": 4.5,
+            "accessibleWidth": 3.6,
+            "accessibleDepth": 5.0,
+            "accessibleAisleWidth": 1.5,
+            "accessibleRatio": 0.03
+        },
+        "angles": [
+            90,
+            60,
+            45
+        ],
+        "notes": "Based on National Building Code of India 2016"
     },
-    "stalls": {
-      "standardWidth": 2.6,
-      "standardDepth": 5.5,
-      "compactWidth": 2.4,
-      "compactDepth": 4.6,
-      "accessibleWidth": 3.4,
-      "accessibleDepth": 5.5,
-      "accessibleAisleWidth": 1.5,
-      "accessibleRatio": 0.02
+    "CHN_GB_50016": {
+        "label": "China GB 50016",
+        "circulation": {
+            "driveAisleWidthTwoWay": 6.0,
+            "driveAisleWidthOneWay": 3.5,
+            "fireLaneWidth": 6.0,
+            "accessLaneWidth": 3.5,
+            "turningRadiusMin": 6.0,
+            "entryLaneWidth": 3.5,
+            "exitLaneWidth": 3.5
+        },
+        "stalls": {
+            "standardWidth": 2.5,
+            "standardDepth": 5.0,
+            "compactWidth": 2.4,
+            "compactDepth": 4.5,
+            "accessibleWidth": 3.5,
+            "accessibleDepth": 5.0,
+            "accessibleAisleWidth": 1.5,
+            "accessibleRatio": 0.02
+        },
+        "angles": [
+            90,
+            60
+        ],
+        "notes": "Based on GB 50016 Code for Fire Protection Design of Buildings"
     },
-    "angles": [90, 60, 45],
-    "notes": "Based on National Building Code of Canada 2020"
-  },
-  "EURO_GENERIC": {
-    "label": "European (Generic)",
-    "circulation": {
-      "driveAisleWidthTwoWay": 6.0,
-      "driveAisleWidthOneWay": 3.5,
-      "fireLaneWidth": 6.0,
-      "accessLaneWidth": 3.5,
-      "turningRadiusMin": 6.0,
-      "entryLaneWidth": 3.5,
-      "exitLaneWidth": 3.5
+    "JPN_BUILDING": {
+        "label": "Japan Building Standard",
+        "circulation": {
+            "driveAisleWidthTwoWay": 5.5,
+            "driveAisleWidthOneWay": 3.3,
+            "fireLaneWidth": 5.5,
+            "accessLaneWidth": 3.3,
+            "turningRadiusMin": 5.0,
+            "entryLaneWidth": 3.3,
+            "exitLaneWidth": 3.3
+        },
+        "stalls": {
+            "standardWidth": 2.3,
+            "standardDepth": 5.0,
+            "compactWidth": 2.0,
+            "compactDepth": 4.5,
+            "accessibleWidth": 3.5,
+            "accessibleDepth": 5.0,
+            "accessibleAisleWidth": 1.4,
+            "accessibleRatio": 0.02
+        },
+        "angles": [
+            90,
+            60,
+            45
+        ],
+        "notes": "Based on Japanese Building Standard Law and JIS guidelines"
     },
-    "stalls": {
-      "standardWidth": 2.5,
-      "standardDepth": 5.0,
-      "compactWidth": 2.3,
-      "compactDepth": 4.5,
-      "accessibleWidth": 3.5,
-      "accessibleDepth": 5.0,
-      "accessibleAisleWidth": 1.5,
-      "accessibleRatio": 0.04
-    },
-    "angles": [90, 75, 60, 45],
-    "notes": "Generic European standards based on EN 14904 and common practice"
-  },
-  "AUS_NZ_GENERIC": {
-    "label": "Australia/NZ (Generic)",
-    "circulation": {
-      "driveAisleWidthTwoWay": 6.2,
-      "driveAisleWidthOneWay": 3.5,
-      "fireLaneWidth": 6.0,
-      "accessLaneWidth": 3.5,
-      "turningRadiusMin": 6.5,
-      "entryLaneWidth": 3.5,
-      "exitLaneWidth": 3.5
-    },
-    "stalls": {
-      "standardWidth": 2.5,
-      "standardDepth": 5.4,
-      "compactWidth": 2.3,
-      "compactDepth": 4.8,
-      "accessibleWidth": 3.8,
-      "accessibleDepth": 5.4,
-      "accessibleAisleWidth": 2.4,
-      "accessibleRatio": 0.02
-    },
-    "angles": [90, 60, 45],
-    "notes": "Based on AS/NZS 2890.1 and AS/NZS 2890.6"
-  },
-  "IND_NBC_2016": {
-    "label": "India NBC 2016",
-    "circulation": {
-      "driveAisleWidthTwoWay": 6.0,
-      "driveAisleWidthOneWay": 3.5,
-      "fireLaneWidth": 6.0,
-      "accessLaneWidth": 3.5,
-      "turningRadiusMin": 6.0,
-      "entryLaneWidth": 3.5,
-      "exitLaneWidth": 3.5
-    },
-    "stalls": {
-      "standardWidth": 2.5,
-      "standardDepth": 5.0,
-      "compactWidth": 2.3,
-      "compactDepth": 4.5,
-      "accessibleWidth": 3.6,
-      "accessibleDepth": 5.0,
-      "accessibleAisleWidth": 1.5,
-      "accessibleRatio": 0.03
-    },
-    "angles": [90, 60, 45],
-    "notes": "Based on National Building Code of India 2016"
-  },
-  "CHN_GB_50016": {
-    "label": "China GB 50016",
-    "circulation": {
-      "driveAisleWidthTwoWay": 6.0,
-      "driveAisleWidthOneWay": 3.5,
-      "fireLaneWidth": 6.0,
-      "accessLaneWidth": 3.5,
-      "turningRadiusMin": 6.0,
-      "entryLaneWidth": 3.5,
-      "exitLaneWidth": 3.5
-    },
-    "stalls": {
-      "standardWidth": 2.5,
-      "standardDepth": 5.0,
-      "compactWidth": 2.4,
-      "compactDepth": 4.5,
-      "accessibleWidth": 3.5,
-      "accessibleDepth": 5.0,
-      "accessibleAisleWidth": 1.5,
-      "accessibleRatio": 0.02
-    },
-    "angles": [90, 60],
-    "notes": "Based on GB 50016 Code for Fire Protection Design of Buildings"
-  },
-  "JPN_BUILDING": {
-    "label": "Japan Building Standard",
-    "circulation": {
-      "driveAisleWidthTwoWay": 5.5,
-      "driveAisleWidthOneWay": 3.3,
-      "fireLaneWidth": 5.5,
-      "accessLaneWidth": 3.3,
-      "turningRadiusMin": 5.0,
-      "entryLaneWidth": 3.3,
-      "exitLaneWidth": 3.3
-    },
-    "stalls": {
-      "standardWidth": 2.3,
-      "standardDepth": 5.0,
-      "compactWidth": 2.0,
-      "compactDepth": 4.5,
-      "accessibleWidth": 3.5,
-      "accessibleDepth": 5.0,
-      "accessibleAisleWidth": 1.4,
-      "accessibleRatio": 0.02
-    },
-    "angles": [90, 60, 45],
-    "notes": "Based on Japanese Building Standard Law and JIS guidelines"
-  },
-  "GENERIC": {
-    "label": "Generic (Default)",
-    "circulation": {
-      "driveAisleWidthTwoWay": 6.0,
-      "driveAisleWidthOneWay": 3.5,
-      "fireLaneWidth": 6.0,
-      "accessLaneWidth": 3.5,
-      "turningRadiusMin": 6.0,
-      "entryLaneWidth": 3.5,
-      "exitLaneWidth": 3.5
-    },
-    "stalls": {
-      "standardWidth": 2.5,
-      "standardDepth": 5.0,
-      "compactWidth": 2.3,
-      "compactDepth": 4.5,
-      "accessibleWidth": 3.5,
-      "accessibleDepth": 5.0,
-      "accessibleAisleWidth": 1.5,
-      "accessibleRatio": 0.02
-    },
-    "angles": [90, 60, 45],
-    "notes": "Generic defaults suitable for initial design"
-  }
+    "GENERIC": {
+        "label": "Generic (Default)",
+        "circulation": {
+            "driveAisleWidthTwoWay": 6.0,
+            "driveAisleWidthOneWay": 3.5,
+            "fireLaneWidth": 6.0,
+            "accessLaneWidth": 3.5,
+            "turningRadiusMin": 6.0,
+            "entryLaneWidth": 3.5,
+            "exitLaneWidth": 3.5
+        },
+        "stalls": {
+            "standardWidth": 2.5,
+            "standardDepth": 5.0,
+            "compactWidth": 2.3,
+            "compactDepth": 4.5,
+            "accessibleWidth": 3.5,
+            "accessibleDepth": 5.0,
+            "accessibleAisleWidth": 1.5,
+            "accessibleRatio": 0.02
+        },
+        "angles": [
+            90,
+            60,
+            45
+        ],
+        "notes": "Generic defaults suitable for initial design"
+    }
 }

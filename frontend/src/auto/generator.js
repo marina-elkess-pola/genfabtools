@@ -3,6 +3,7 @@
 
 import { clonePoints, principalAxisAngle, dot, projectionsExtent, rectFromCenterDir, polyContainsRect, pointInPolygon, hsl } from './geometry';
 import { normalizeWithCodeStandards, resolveCirculationParams } from './parkingStandards';
+import { generateCirculationNetwork, mergeCirculationToStreets, generateStallsForAisles } from './circulationGenerator';
 
 // Choose an axis aligned to the dominant boundary edge orientation.
 // Fallback to principal axis if edges are noisy or boundary is irregular.
@@ -887,10 +888,10 @@ export function generateStructuralSchemes(boundaryPts, params) {
 
 function normalizeParams(params) {
     // First, apply code-based standards if a codeSet is provided
-    const codeNormalized = params?.codeSet 
+    const codeNormalized = params?.codeSet
         ? normalizeWithCodeStandards(params)
         : params;
-    
+
     const defaults = {
         unitsPerMeter: 1,
         stallWidth: 2.6,
@@ -964,410 +965,129 @@ function rectsOverlap(a, b) {
     return ax0 <= bx1 && ax1 >= bx0 && ay0 <= by1 && ay1 >= by0;
 }
 
+/**
+ * Generate a single parking layout using the new clean circulation generator.
+ * This replaces the previous complex, fragmented street generation logic.
+ */
 function layoutOnce(boundary, p, axisAngle, stallAngle, phaseFrac = 0) {
     const upm = p.unitsPerMeter;
     const W = metersToUnits(p.stallWidth, upm);
     const D = metersToUnits(p.stallDepth, upm);
-    const WD_AISLE = metersToUnits(resolveAisleWidthMeters(p), upm);
+    const driveWidthM = resolveAisleWidthMeters(p);
+    const WD_AISLE = metersToUnits(driveWidthM, upm);
     const WD_STREET = metersToUnits(resolveStreetWidthMeters(p), upm);
-    const PITCH = WD_AISLE + 2 * D; // double-loaded module pitch across normal
 
-    // Primary (tangent) direction (axis), normal to it (across rows)
+    // Direction vectors
     const t = { x: Math.cos(axisAngle), y: Math.sin(axisAngle) };
     const n = { x: -t.y, y: t.x };
-
-    // extents along normal/tangent
     const extN = projectionsExtent(boundary, n);
     const extT = projectionsExtent(boundary, t);
 
-    // All circulation goes into streets with types:
-    // - 'two-way': main perimeter streets (vertical, along N axis)
-    // - 'aisle': drive lanes between stalls (horizontal, along T axis)
-    // - 'connector': short stubs connecting aisles to streets (T-junctions)
-    // - 'one-way': narrower one-way streets (if enabled)
-    const streets = [];
-    const stalls = [];
-    const access = [];
+    // === USE NEW CLEAN CIRCULATION GENERATOR ===
+    const circulationNetwork = generateCirculationNetwork({
+        boundary,
+        codeSet: p.codeSet || 'GENERIC',
+        unitsPerMeter: upm,
+        stallWidth: p.stallWidth,
+        stallDepth: p.stallDepth,
+        axisAngle,
+        aisleType: p.aisleType || 'two-way',
+        layoutPattern: p.circulationMode || 'loop'
+    });
 
-    // === PERIMETER STREETS (two-way loop) ===
-    const streetW = WD_STREET;
-    const streetLen = Math.abs(extN.max - extN.min);
-    const streetInset = Math.min(metersToUnits(1.2, upm), Math.max(0, (extT.max - extT.min - streetW) * 0.1));
-    const streetTPositions = [extT.min + streetW / 2 + streetInset, extT.max - streetW / 2 - streetInset];
+    // Merge all circulation into unified streets array
+    const streets = mergeCirculationToStreets(circulationNetwork);
 
-    for (const tPos of streetTPositions) {
-        if (tPos <= extT.min || tPos >= extT.max) continue;
-        const c = { x: t.x * tPos + n.x * ((extN.min + extN.max) / 2), y: t.y * tPos + n.y * ((extN.min + extN.max) / 2) };
-        const r = rectFromCenterDir(c, t, n, streetW, streetLen);
-        const contains = polyContainsRect(r, boundary) || pointInPolygon(c, boundary);
-        if (contains) {
-            streets.push({ x: c.x, y: c.y, w: streetLen, h: streetW, angle: axisAngle + Math.PI / 2, type: 'street' });
-        }
-    }
+    // Generate stalls along the aisles
+    const rawStalls = generateStallsForAisles({
+        boundary,
+        aisles: streets.filter(s => s.type === 'aisle'),
+        t, n,
+        stallWidth: p.stallWidth,
+        stallDepth: p.stallDepth,
+        driveWidth: driveWidthM,
+        unitsPerMeter: upm
+    });
 
-    // Horizontal top/bottom edges to complete perimeter loop
-    const horizLen = Math.max(0, (extT.max - extT.min) - 2 * (streetInset));
-    if (horizLen > 0) {
-        const topN = extN.max - (streetW / 2 + streetInset);
-        const botN = extN.min + (streetW / 2 + streetInset);
-        const cTop = { x: t.x * ((extT.min + extT.max) / 2) + n.x * topN, y: t.y * ((extT.min + extT.max) / 2) + n.y * topN };
-        const cBot = { x: t.x * ((extT.min + extT.max) / 2) + n.x * botN, y: t.y * ((extT.min + extT.max) / 2) + n.y * botN };
-        let lenTop = horizLen, lenBot = horizLen;
-        let rTop = rectFromCenterDir(cTop, t, n, lenTop, streetW);
-        let rBot = rectFromCenterDir(cBot, t, n, lenBot, streetW);
-        let triesTop = 0, triesBot = 0;
-        while (!polyContainsRect(rTop, boundary) && triesTop < 8 && lenTop > streetW) { lenTop *= 0.9; rTop = rectFromCenterDir(cTop, t, n, lenTop, streetW); triesTop++; }
-        while (!polyContainsRect(rBot, boundary) && triesBot < 8 && lenBot > streetW) { lenBot *= 0.9; rBot = rectFromCenterDir(cBot, t, n, lenBot, streetW); triesBot++; }
-        if (polyContainsRect(rTop, boundary) || pointInPolygon(cTop, boundary)) streets.push({ x: cTop.x, y: cTop.y, w: lenTop, h: streetW, angle: axisAngle, type: 'street' });
-        if (polyContainsRect(rBot, boundary) || pointInPolygon(cBot, boundary)) streets.push({ x: cBot.x, y: cBot.y, w: lenBot, h: streetW, angle: axisAngle, type: 'street' });
-    }
+    // Access zones from the circulation network
+    const access = circulationNetwork.access || [];
 
-    // === INTERNAL VERTICAL TWO-WAY STREETS (Y-axis) ===
-    // Add evenly spaced vertical streets between left/right perimeter to mirror X-axis streets density.
-    {
-        const vertSpanLen = Math.max(0, (extN.max - extN.min) - 2 * streetInset);
-        if (vertSpanLen > 0) {
-            const minCount = Math.max(0, Number(p.minVerticalStreetCount || 2));
-            // Place between left and right streets; avoid too close to edges
-            for (let i = 1; i <= minCount; i++) {
-                const frac = i / (minCount + 1);
-                // Offset centers away from perimeter streets by half street width
-                const centerT = extT.min + (extT.max - extT.min) * frac;
-                const centerN = (extN.min + extN.max) / 2;
-                const cVert = { x: t.x * centerT + n.x * centerN, y: t.y * centerT + n.y * centerN };
-                let rectVert = rectFromCenterDir(cVert, n, t, vertSpanLen, WD_STREET);
-                let triesV = 0; let hV = vertSpanLen;
-                while (!polyContainsRect(rectVert, boundary) && triesV < 8 && hV > WD_STREET) {
-                    hV *= 0.9;
-                    rectVert = rectFromCenterDir(cVert, n, t, hV, WD_STREET);
-                    triesV++;
-                }
-                if (polyContainsRect(rectVert, boundary) || pointInPolygon(cVert, boundary)) {
-                    streets.push({ x: cVert.x, y: cVert.y, w: hV, h: WD_STREET, angle: axisAngle + Math.PI / 2, type: 'street' });
-                }
-            }
-            // Also ensure at least one central vertical street exists if none added (robust fallback)
-            const anyVertical = streets.some(s => Math.abs((s.angle || 0) - (axisAngle + Math.PI / 2)) < 0.1);
-            if (!anyVertical) {
-                const centerT = (extT.min + extT.max) / 2;
-                const centerN = (extN.min + extN.max) / 2;
-                const cVert = { x: t.x * centerT + n.x * centerN, y: t.y * centerT + n.y * centerN };
-                let rectVert = rectFromCenterDir(cVert, n, t, vertSpanLen, WD_STREET);
-                let triesV = 0; let hV = vertSpanLen;
-                while (!polyContainsRect(rectVert, boundary) && triesV < 8 && hV > WD_STREET) {
-                    hV *= 0.9;
-                    rectVert = rectFromCenterDir(cVert, n, t, hV, WD_STREET);
-                    triesV++;
-                }
-                if (polyContainsRect(rectVert, boundary) || pointInPolygon(cVert, boundary)) {
-                    streets.push({ x: cVert.x, y: cVert.y, w: hV, h: WD_STREET, angle: axisAngle + Math.PI / 2, type: 'street' });
-                }
-            }
-        }
-    }
-
-    // === AISLE STREETS (horizontal, between stall rows) ===
-    const rows = [];
-    const startN = Math.ceil((extN.min + PITCH * phaseFrac) / PITCH) * PITCH;
-    for (let kn = startN; kn <= extN.max; kn += PITCH) rows.push(kn);
-
-    // Compute aisle length: extend from one perimeter street to the other (or boundary edge)
-    const leftStreetT = streetTPositions[0] || extT.min;
-    const rightStreetT = streetTPositions[1] || extT.max;
-
-    for (const midN of rows) {
-        // Aisle runs from left street to right street
-        const aisleStartT = leftStreetT + streetW / 2; // start at right edge of left street
-        const aisleEndT = rightStreetT - streetW / 2;   // end at left edge of right street
-        const aisleLen = Math.max(1, aisleEndT - aisleStartT);
-        const aisleCenterT = (aisleStartT + aisleEndT) / 2;
-
-        const center = { x: t.x * aisleCenterT + n.x * midN, y: t.y * aisleCenterT + n.y * midN };
-        let fitLen = aisleLen;
-        let aisleRect = rectFromCenterDir(center, t, n, fitLen, WD_AISLE);
-        let triesA = 0;
-        while (!polyContainsRect(aisleRect, boundary) && triesA < 8 && fitLen > WD_AISLE) {
-            fitLen *= 0.9;
-            aisleRect = rectFromCenterDir(center, t, n, fitLen, WD_AISLE);
-            triesA++;
-        }
-        if (polyContainsRect(aisleRect, boundary)) {
-            // This is an aisle-type street (fitted)
-            streets.push({ x: center.x, y: center.y, w: fitLen, h: WD_AISLE, angle: axisAngle, type: 'aisle' });
-
-            // Build stalls on both sides of this fitted aisle
-            const offset = (WD_AISLE / 2) + (D / 2);
-            const rowNs = [midN - offset, midN + offset];
-            const halfLen = fitLen / 2;
-            const effStartT = aisleCenterT - halfLen;
-            const effEndT = aisleCenterT + halfLen;
-            const startT = Math.ceil(effStartT / W) * W;
-            for (const rowN of rowNs) {
-                for (let kt = startT; kt <= effEndT - W / 2; kt += W) {
-                    const c = { x: t.x * kt + n.x * rowN, y: t.y * kt + n.y * rowN };
-                    const rect = rectFromCenterDir(c, t, n, W, D);
-                    if (polyContainsRect(rect, boundary)) stalls.push({ x: c.x, y: c.y, hw: W / 2, hd: D / 2 });
-                }
-            }
-
-            // Add T-junction connectors from aisle ends to nearest perimeter street edges
-            const endsT = [aisleCenterT - halfLen, aisleCenterT + halfLen];
-            for (const endT of endsT) {
-                // Compute world center between aisle end and nearest street edge
-                // Left connector spans from endT back towards leftStreetT; right towards rightStreetT
-                const targetT = endT < aisleCenterT ? leftStreetT : rightStreetT;
-                const span = Math.abs(targetT - endT);
-                if (span <= 1e-3) continue;
-                let connLen = Math.max(WD_STREET * 1.2, span);
-                const connCenterT = (endT + targetT) / 2;
-                const connCenter = { x: t.x * connCenterT + n.x * midN, y: t.y * connCenterT + n.y * midN };
-                let connRect = rectFromCenterDir(connCenter, t, n, connLen, WD_STREET);
-                let tries = 0;
-                while (!polyContainsRect(connRect, boundary) && tries < 8 && connLen > metersToUnits(4, upm)) {
-                    // shrink connector length until it fits
-                    connLen *= 0.85;
-                    connRect = rectFromCenterDir(connCenter, t, n, connLen, WD_STREET);
-                    tries++;
-                }
-                const centerInside = pointInPolygon(connCenter, boundary);
-                if (polyContainsRect(connRect, boundary) || centerInside || p.forceConnectors) {
-                    streets.push({ x: connCenter.x, y: connCenter.y, w: connLen, h: WD_STREET, angle: axisAngle, type: 'connector' });
-                }
-            }
-        }
-    }
-
-    // === GUARANTEE AISLE CONNECTIONS TO LOOP ===
-    // For each aisle street, ensure at least one connector exists to the perimeter two-way streets.
-    {
-        const twoWayStreets = streets.filter(s => s.type === 'two-way');
-        const aisleSts = streets.filter(s => s.type === 'aisle');
-        for (const a of aisleSts) {
-            const aN = dot({ x: a.x, y: a.y }, n);
-            const aT = dot({ x: a.x, y: a.y }, t);
-            const halfLen = (a.w || 0) / 2;
-            const endLeftT = aT - halfLen;
-            const endRightT = aT + halfLen;
-            // count connectors already near this aisle normal
-            const existingConns = streets.filter(s => s.type === 'connector');
-            const nearConnCount = existingConns.reduce((acc, s) => {
-                const sN = dot({ x: s.x, y: s.y }, n);
-                return acc + (Math.abs(sN - aN) <= WD_STREET * 0.75 ? 1 : 0);
-            }, 0);
-            if (nearConnCount >= 1) continue;
-            // create at least one connector to nearest two-way street
-            let targetLeftT = leftStreetT;
-            let targetRightT = rightStreetT;
-            // prefer actual nearest two-way street centers if available
-            if (twoWayStreets.length) {
-                let bestL = null, bestR = null, dL = Number.POSITIVE_INFINITY, dR = Number.POSITIVE_INFINITY;
-                for (const st of twoWayStreets) {
-                    const stT = dot({ x: st.x, y: st.y }, t);
-                    const dToLeft = Math.abs(stT - endLeftT);
-                    const dToRight = Math.abs(stT - endRightT);
-                    if (dToLeft < dL) { dL = dToLeft; bestL = stT; }
-                    if (dToRight < dR) { dR = dToRight; bestR = stT; }
-                }
-                if (bestL != null) targetLeftT = bestL;
-                if (bestR != null) targetRightT = bestR;
-            }
-            // build connector on the closer side
-            const dLeft = Math.abs(targetLeftT - endLeftT);
-            const dRight = Math.abs(targetRightT - endRightT);
-            const useLeft = dLeft <= dRight;
-            const endT = useLeft ? endLeftT : endRightT;
-            const targetT = useLeft ? targetLeftT : targetRightT;
-            const span = Math.abs(targetT - endT);
-            if (span > 1e-3) {
-                let connLen = Math.max(WD_STREET * 1.2, span);
-                const connCenterT = (endT + targetT) / 2;
-                const connCenter = { x: t.x * connCenterT + n.x * aN, y: t.y * connCenterT + n.y * aN };
-                let connRect = rectFromCenterDir(connCenter, t, n, connLen, WD_STREET);
-                let tries = 0;
-                while (!polyContainsRect(connRect, boundary) && tries < 8 && connLen > metersToUnits(4, upm)) {
-                    connLen *= 0.85;
-                    connRect = rectFromCenterDir(connCenter, t, n, connLen, WD_STREET);
-                    tries++;
-                }
-                const centerInside = pointInPolygon(connCenter, boundary);
-                if (polyContainsRect(connRect, boundary) || centerInside || p.forceConnectors) {
-                    streets.push({ x: connCenter.x, y: connCenter.y, w: connLen, h: WD_STREET, angle: axisAngle, type: 'connector' });
-                }
-            }
-        }
-    }
-
-    // === CROSS-AISLE CONNECTOR (SPINE) ===
-    // Vertical connector that spans across all aisles, allowing vehicles to move between aisles
-    const aisleStreets = streets.filter(s => s.type === 'aisle');
-    const aisleNs = aisleStreets.map(a => dot({ x: a.x, y: a.y }, n));
-
-    if (aisleNs.length >= 2) {
-        const minAisleN = Math.min(...aisleNs);
-        const maxAisleN = Math.max(...aisleNs);
-        const spineHeight = (maxAisleN - minAisleN) + WD_AISLE;
-        const spineCenterN = (minAisleN + maxAisleN) / 2;
-        // Place spine(s) at evenly spaced T positions based on minConnectorCount
-        const numSpines = Math.max(1, Math.min(5, Number(p.minConnectorCount || 2)));
-        for (let i = 0; i < numSpines; i++) {
-            const frac = (i + 1) / (numSpines + 1);
-            const spineCenterT = leftStreetT + (rightStreetT - leftStreetT) * frac;
-            const spineCenter = { x: t.x * spineCenterT + n.x * spineCenterN, y: t.y * spineCenterT + n.y * spineCenterN };
-
-            let spineRect = rectFromCenterDir(spineCenter, n, t, spineHeight, WD_STREET);
-            const rectInside = polyContainsRect(spineRect, boundary);
-            const centerInside = pointInPolygon(spineCenter, boundary);
-
-            if (rectInside || centerInside || p.forceConnectors) {
-                streets.push({ x: spineCenter.x, y: spineCenter.y, w: spineHeight, h: WD_STREET, angle: axisAngle + Math.PI / 2, type: 'street' });
-            }
-        }
-    }
-
-    // === COLUMNS ===
-    const clearance = metersToUnits(p.columnClearance, upm);
-    const cols = [];
-    const C = metersToUnits(p.columnSpacing, upm);
-    const startNc = Math.ceil(extN.min / C) * C;
-    const startTc = Math.ceil(extT.min / C) * C;
-    for (let kn = startNc; kn <= extN.max; kn += C) {
-        for (let kt = startTc; kt <= extT.max; kt += C) {
-            const c = { x: t.x * kt + n.x * kn, y: t.y * kt + n.y * kn };
-            if (!pointInPolygon(c, boundary)) continue;
-            // Avoid placing columns inside any street
-            let nearStreet = false;
-            for (const st of streets) {
-                const stN = dot({ x: st.x, y: st.y }, n);
-                const stT = dot({ x: st.x, y: st.y }, t);
-                const isHoriz = Math.abs(st.angle - axisAngle) < 0.1;
-                if (isHoriz) {
-                    if (Math.abs(kn - stN) <= ((st.h || WD_AISLE) / 2 + clearance)) { nearStreet = true; break; }
-                } else {
-                    if (Math.abs(kt - stT) <= ((st.w || WD_STREET) / 2 + clearance)) { nearStreet = true; break; }
-                }
-            }
-            if (nearStreet) continue;
-            let inStall = false;
-            for (const s of stalls) {
-                if (Math.abs(dot({ x: c.x - s.x, y: c.y - s.y }, t)) <= (W / 2 + clearance) &&
-                    Math.abs(dot({ x: c.x - s.x, y: c.y - s.y }, n)) <= (D / 2 + clearance)) { inStall = true; break; }
-            }
-            if (!inStall && p.enableColumns !== false) cols.push(c);
-        }
-    }
-
-    // Surface parking lots do not have structural columns; suppress them entirely.
-    const isSurfaceLot = !!(p?.parkingType === 'surface' || p?.type === 'surface' || p?.surfaceParking === true);
-    if ((isSurfaceLot || p.enableColumns === false) && cols.length) {
-        try { console.info('[generator] surface mode: dropping baseline columns', { dropped: cols.length }); } catch (e) { }
-        while (cols.length) cols.pop();
-    }
-
-    // === ACCESS ZONE ===
-    const accessW = WD_STREET * 0.8;
-    const accessLen = Math.min(streetLen * 0.4, metersToUnits(30, upm));
-    const accessN = extN.min + accessW / 2 + metersToUnits(0.5, upm);
-    const accessTmid = (extT.min + extT.max) / 2;
-    const accessC = { x: t.x * accessTmid + n.x * accessN, y: t.y * accessTmid + n.y * accessN };
-    const accessRect = rectFromCenterDir(accessC, t, n, accessLen, accessW);
-    if (polyContainsRect(accessRect, boundary)) {
-        access.push({ x: accessC.x, y: accessC.y, w: accessLen, h: accessW, angle: axisAngle, type: 'access' });
-        // Connect access band to nearest two-way street for guaranteed entry circulation
-        const twoWayStreets = streets.filter(s => s.type === 'two-way');
-        if (twoWayStreets.length) {
-            const aN = accessN;
-            const aT = accessTmid;
-            let best = null; let bestDist = Number.POSITIVE_INFINITY;
-            for (const st of twoWayStreets) {
-                const stT = dot({ x: st.x, y: st.y }, t);
-                const d = Math.abs(stT - aT);
-                if (d < bestDist) { bestDist = d; best = stT; }
-            }
-            if (best != null) {
-                const endT = aT;
-                const targetT = best;
-                const span = Math.abs(targetT - endT);
-                if (span > 1e-3) {
-                    let connLen = Math.max(WD_STREET * 1.2, span);
-                    const connCenterT = (endT + targetT) / 2;
-                    const connCenter = { x: t.x * connCenterT + n.x * aN, y: t.y * connCenterT + n.y * aN };
-                    let connRect = rectFromCenterDir(connCenter, t, n, connLen, WD_STREET);
-                    let tries = 0;
-                    while (!polyContainsRect(connRect, boundary) && tries < 8 && connLen > metersToUnits(4, upm)) {
-                        connLen *= 0.85;
-                        connRect = rectFromCenterDir(connCenter, t, n, connLen, WD_STREET);
-                        tries++;
-                    }
-                    const centerInside = pointInPolygon(connCenter, boundary);
-                    if (polyContainsRect(connRect, boundary) || centerInside || p.forceConnectors) {
-                        streets.push({ x: connCenter.x, y: connCenter.y, w: connLen, h: WD_STREET, angle: axisAngle, type: 'connector' });
-                    }
-                }
-            }
-        }
-    }
-
-    // === RAMPS ===
-    const riseAccessM = Math.max(0, Number(p.groundEntryHeightMeters || 0));
-    const accessSlope = Math.max(0.01, Number(p.accessRampMaxSlopePercent || 12) / 100);
-    const rampLenMeters = Math.max(10, riseAccessM > 0 ? (riseAccessM / accessSlope) : 10);
-    const rampLen = metersToUnits(rampLenMeters, upm);
-    const rampW = WD_STREET;
-    const rampN = (extN.min + extN.max) / 2;
-
+    // === RAMPS (for structured parking) ===
     const ramps = [];
-    const rampCenter = { x: t.x * (extT.min + rampLen / 2 + metersToUnits(0.5, upm)) + n.x * rampN, y: t.y * (extT.min + rampLen / 2 + metersToUnits(0.5, upm)) + n.y * rampN };
-    const rampRect = rectFromCenterDir(rampCenter, t, n, rampLen, rampW);
-    if (polyContainsRect(rampRect, boundary)) {
-        ramps.push({ x: rampCenter.x, y: rampCenter.y, w: rampLen, h: rampW, angle: axisAngle, type: 'ramp' });
+    const riseAccessM = Math.max(0, Number(p.groundEntryHeightMeters || 0));
+    if (riseAccessM > 0) {
+        const accessSlope = Math.max(0.01, Number(p.accessRampMaxSlopePercent || 12) / 100);
+        const rampLenMeters = Math.max(10, riseAccessM / accessSlope);
+        const rampLen = metersToUnits(rampLenMeters, upm);
+        const rampW = WD_STREET;
+        const rampN = (extN.min + extN.max) / 2;
+        const rampCenter = { 
+            x: t.x * (extT.min + rampLen / 2 + metersToUnits(0.5, upm)) + n.x * rampN, 
+            y: t.y * (extT.min + rampLen / 2 + metersToUnits(0.5, upm)) + n.y * rampN 
+        };
+        const rampRect = rectFromCenterDir(rampCenter, t, n, rampLen, rampW);
+        if (polyContainsRect(rampRect, boundary)) {
+            ramps.push({ x: rampCenter.x, y: rampCenter.y, w: rampLen, h: rampW, angle: axisAngle, type: 'ramp' });
+        }
     }
 
-    // === FILTER STALLS that overlap streets/ramps ===
-    const streetsUnique = dedupeBands(streets);
-    // Build blocker rects only from non-perimeter circulation (aisles + connectors),
-    // so perimeter two-way loop does not clear adjacent stall rows.
-    const allCirculationRects = streetsUnique
-        .filter(st => st && st.type !== 'two-way')
+    // === FILTER STALLS OVERLAPPING CIRCULATION ===
+    const circulationRects = streets
+        .filter(st => st && st.type !== 'street') // Don't filter stalls near perimeter streets
         .map(st => {
             const isHoriz = Math.abs((st.angle || 0) - axisAngle) < 0.1;
             return rectFromCenterDir({ x: st.x, y: st.y }, t, n, isHoriz ? st.w : st.h, isHoriz ? st.h : st.w);
         });
     const rampRects = ramps.map(rp => rectFromCenterDir({ x: rp.x, y: rp.y }, t, n, rp.w, rp.h));
     const accessRects = access.map(ac => rectFromCenterDir({ x: ac.x, y: ac.y }, t, n, ac.w, ac.h));
-    const blockerRects = [].concat(allCirculationRects, rampRects, accessRects);
+    const blockerRects = [...circulationRects, ...rampRects, ...accessRects];
 
-    const filteredStalls = [];
-    for (const s of stalls) {
+    const filteredStalls = rawStalls.filter(s => {
         const sr = rectFromCenterDir({ x: s.x, y: s.y }, t, n, (s.hw || 0) * 2, (s.hd || 0) * 2);
-        let bad = false;
         for (const br of blockerRects) {
-            if (rectsOverlap(sr, br)) { bad = true; break; }
+            if (rectsOverlap(sr, br)) return false;
         }
-        if (!bad) filteredStalls.push(s);
-    }
+        return true;
+    });
 
-    // If no stalls survived filtering, relax by shrinking blocker bands slightly and retry once
-    if (filteredStalls.length === 0 && stalls.length > 0) {
-        const shrink = 0.85;
-        const relaxedBlocks = blockerRects.map(r => {
-            const rx0 = Math.min(...r.map(p => p.x)), rx1 = Math.max(...r.map(p => p.x));
-            const ry0 = Math.min(...r.map(p => p.y)), ry1 = Math.max(...r.map(p => p.y));
-            const cx = (rx0 + rx1) / 2, cy = (ry0 + ry1) / 2;
-            const w = (rx1 - rx0) * shrink; const h = (ry1 - ry0) * shrink;
-            return rectFromCenterDir({ x: cx, y: cy }, t, n, w, h);
-        });
-        const retry = [];
-        for (const s of stalls) {
-            const sr = rectFromCenterDir({ x: s.x, y: s.y }, t, n, (s.hw || 0) * 2, (s.hd || 0) * 2);
-            let bad = false;
-            for (const br of relaxedBlocks) { if (rectsOverlap(sr, br)) { bad = true; break; } }
-            if (!bad) retry.push(s);
-        }
-        if (retry.length > 0) {
-            try { console.info('[generator] stall relax applied', { original: stalls.length, kept: retry.length }); } catch (e) { }
-            // overwrite filteredStalls
-            while (filteredStalls.length) filteredStalls.pop();
-            for (const s of retry) filteredStalls.push(s);
+    // === COLUMNS (for structured parking only) ===
+    const cols = [];
+    const isSurfaceLot = !!(p?.parkingType === 'surface' || p?.type === 'surface' || p?.surfaceParking === true);
+    
+    if (!isSurfaceLot && p.enableColumns !== false) {
+        const clearance = metersToUnits(p.columnClearance || 0.3, upm);
+        const C = metersToUnits(p.columnSpacing || 7.5, upm);
+        const startNc = Math.ceil(extN.min / C) * C;
+        const startTc = Math.ceil(extT.min / C) * C;
+        
+        for (let kn = startNc; kn <= extN.max; kn += C) {
+            for (let kt = startTc; kt <= extT.max; kt += C) {
+                const c = { x: t.x * kt + n.x * kn, y: t.y * kt + n.y * kn };
+                if (!pointInPolygon(c, boundary)) continue;
+                
+                // Avoid placing columns inside streets or stalls
+                let nearStreet = false;
+                for (const st of streets) {
+                    const stN = dot({ x: st.x, y: st.y }, n);
+                    const stT = dot({ x: st.x, y: st.y }, t);
+                    const isHoriz = Math.abs((st.angle || 0) - axisAngle) < 0.1;
+                    if (isHoriz) {
+                        if (Math.abs(kn - stN) <= ((st.h || WD_AISLE) / 2 + clearance)) { nearStreet = true; break; }
+                    } else {
+                        if (Math.abs(kt - stT) <= ((st.w || WD_STREET) / 2 + clearance)) { nearStreet = true; break; }
+                    }
+                }
+                if (nearStreet) continue;
+                
+                let inStall = false;
+                for (const s of filteredStalls) {
+                    if (Math.abs(dot({ x: c.x - s.x, y: c.y - s.y }, t)) <= (W / 2 + clearance) &&
+                        Math.abs(dot({ x: c.x - s.x, y: c.y - s.y }, n)) <= (D / 2 + clearance)) { 
+                        inStall = true; break; 
+                    }
+                }
+                if (!inStall) cols.push(c);
+            }
         }
     }
 
@@ -1376,20 +1096,20 @@ function layoutOnce(boundary, p, axisAngle, stallAngle, phaseFrac = 0) {
     for (const c of cols) {
         for (const s of filteredStalls) {
             if (Math.abs(dot({ x: c.x - s.x, y: c.y - s.y }, t)) <= (W / 2) &&
-                Math.abs(dot({ x: c.x - s.x, y: c.y - s.y }, n)) <= (D / 2)) { conflicts++; break; }
+                Math.abs(dot({ x: c.x - s.x, y: c.y - s.y }, n)) <= (D / 2)) { 
+                conflicts++; break; 
+            }
         }
     }
 
-    const aisleCount = streetsUnique.filter(s => s.type === 'aisle').length;
-    const connectorCount = streetsUnique.filter(s => s.type === 'connector').length;
-    const twoWayCount = streetsUnique.filter(s => s.type === 'two-way').length;
-
-
+    const aisleCount = streets.filter(s => s.type === 'aisle').length;
+    const connectorCount = streets.filter(s => s.type === 'connector').length;
+    const perimeterCount = streets.filter(s => s.type && s.type.startsWith('perimeter')).length;
 
     const counts = {
         stalls: filteredStalls.length,
         aisles: aisleCount,
-        streets: twoWayCount,
+        streets: perimeterCount,
         columns: cols.length,
         connectors: connectorCount,
         conflicts,
@@ -1403,17 +1123,15 @@ function layoutOnce(boundary, p, axisAngle, stallAngle, phaseFrac = 0) {
         + (cols.length * (0.05 * w.columns))
         + (connectorCount * (0.12 * (w.connectors || 1)));
 
-    // Return unified structure - aisles are now part of streets
     return {
         points: boundary,
         closed: true,
         color: '#475569',
         stalls: filteredStalls,
-        // Aisles are represented as streets of type 'aisle'; return empty aisles for UI to rely on streets
-        aisles: [],
-        streets: streetsUnique, // All circulation with types
+        aisles: [], // Aisles are now in streets array with type 'aisle'
+        streets,
         access,
-        columns: (p.enableColumns === false ? [] : cols),
+        columns: cols,
         ramps,
         counts
     };

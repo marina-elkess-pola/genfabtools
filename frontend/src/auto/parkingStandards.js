@@ -45,11 +45,11 @@ export function getParkingStandards(codeSet) {
 export function resolveCirculationParams(codeSet, aisleType = 'two-way') {
     const standards = getParkingStandards(codeSet);
     const circ = standards.circulation || {};
-    
-    const driveWidth = aisleType === 'one-way' 
+
+    const driveWidth = aisleType === 'one-way'
         ? (circ.driveAisleWidthOneWay || 3.5)
         : (circ.driveAisleWidthTwoWay || 6.0);
-    
+
     return {
         driveWidth,
         fireLaneWidth: circ.fireLaneWidth || 6.0,
@@ -69,9 +69,9 @@ export function resolveCirculationParams(codeSet, aisleType = 'two-way') {
 export function resolveStallParams(codeSet, stallType = 'standard') {
     const standards = getParkingStandards(codeSet);
     const stalls = standards.stalls || {};
-    
+
     let width, depth, aisleWidth;
-    
+
     switch (stallType) {
         case 'compact':
             width = stalls.compactWidth || 2.3;
@@ -88,7 +88,7 @@ export function resolveStallParams(codeSet, stallType = 'standard') {
             depth = stalls.standardDepth || 5.0;
             aisleWidth = 0;
     }
-    
+
     return {
         width,
         depth,
@@ -117,11 +117,11 @@ export function normalizeWithCodeStandards(params) {
     const codeSet = params.codeSet || params.parkingCode || DEFAULT_CODE;
     const aisleType = params.aisleType || 'two-way';
     const stallType = params.stallType || 'standard';
-    
+
     const circ = resolveCirculationParams(codeSet, aisleType);
     const stall = resolveStallParams(codeSet, stallType);
     const angles = getRecommendedAngles(codeSet);
-    
+
     // Merge: user params override code-based defaults
     return {
         // Code-based circulation (can be overridden)
@@ -131,16 +131,16 @@ export function normalizeWithCodeStandards(params) {
         turningRadiusMin: params.turningRadiusMin ?? circ.turningRadiusMin,
         entryLaneWidth: params.entryLaneWidth ?? circ.entryLaneWidth,
         exitLaneWidth: params.exitLaneWidth ?? circ.exitLaneWidth,
-        
+
         // Code-based stall dimensions (can be overridden)
         stallWidth: params.stallWidth ?? stall.width,
         stallDepth: params.stallDepth ?? stall.depth,
         accessibleAisleWidth: params.accessibleAisleWidth ?? stall.aisleWidth,
         accessibleRatio: params.accessibleRatio ?? stall.accessibleRatio,
-        
+
         // Code-based angles (can be overridden)
         stallAngles: params.stallAngles ?? angles,
-        
+
         // Pass through other params unchanged
         codeSet,
         aisleType,
