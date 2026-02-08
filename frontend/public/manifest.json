@@ -1,0 +1,26 @@
+{
+    "name": "GenFabTools",
+    "short_name": "GenFabTools",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#2563eb",
+    "description": "GenFabTools – Occupancy load calculator for architects and AEC professionals.",
+    "icons": [
+        {
+            "src": "/occucalc-logo.svg",
+            "type": "image/svg+xml",
+            "sizes": "any"
+        },
+        {
+            "src": "/icon-192.png",
+            "type": "image/png",
+            "sizes": "192x192"
+        },
+        {
+            "src": "/icon-512.png",
+            "type": "image/png",
+            "sizes": "512x512"
+        }
+    ]
+}

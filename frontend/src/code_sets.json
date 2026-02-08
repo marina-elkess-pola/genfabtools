@@ -1,0 +1,146 @@
+{
+  "IBC_2024": {
+    "label": "IBC 2024 (Table 1004.5) – starter",
+    "factors": {
+      "Assembly – fixed seats": 1,
+      "Assembly – standing": 0.65,
+      "Assembly – tables & chairs": 1.4,
+      "Classroom": 1.9,
+      "Laboratory": 4.6,
+      "Library – reading": 4.6,
+      "Library – stack area": 9.3,
+      "Business/Office": 9.3,
+      "Retail / Mercantile – sales floor": 2.8,
+      "Retail – storage/back of house": 28,
+      "Residential – dwelling unit": 18.6,
+      "Residential – hotel/motel": 18.6,
+      "Residential – dormitory": 9.3,
+      "Industrial – shop/plant": 9.3,
+      "Educational – day care": 3.7,
+      "Educational – K-12": 1.9,
+      "Medical – in-patient": 22.3,
+      "Medical – out-patient": 9.3,
+      "Storage – general": 46.5,
+      "Parking garage": 46.5,
+      "Mechanical / Electrical": 28,
+      "Corridor": 0.5,
+      "Stair": 0.25
+    }
+  },
+  "NFPA_101_2024": {
+    "label": "NFPA 101 (2024) – starter",
+    "factors": {
+      "Assembly – standing": 0.65,
+      "Assembly – tables & chairs": 1.4,
+      "Classroom": 1.9,
+      "Laboratory": 4.6,
+      "Business/Office": 9.3,
+      "Retail / Mercantile – sales floor": 2.8,
+      "Residential – hotel/motel": 18.6,
+      "Residential – dormitory": 9.3,
+      "Industrial – shop/plant": 9.3,
+      "Medical – out-patient": 9.3,
+      "Storage – general": 46.5,
+      "Mechanical / Electrical": 28
+    }
+  },
+  "UK_ADB_2023": {
+    "label": "UK Approved Document B (2023) – starter",
+    "factors": {
+      "Assembly – standing": 0.5,
+      "Assembly – tables & chairs": 1,
+      "Office": 10,
+      "Retail": 2.5,
+      "Schools – general": 2,
+      "Residential – hotel": 18,
+      "Residential – dwelling": 18,
+      "Industrial": 10,
+      "Storage": 50
+    }
+  },
+  "GENERIC": {
+    "label": "Generic (edit as needed)",
+    "factors": {
+      "Retail": 2.8,
+      "Restaurant": 1.4,
+      "Administrative": 9.3,
+      "Mechanical": 28
+    }
+  },
+  "CAN_NBC_2020": {
+    "label": "Canada NBC 2020 – starter",
+    "factors": {
+      "Assembly – standing": 0.65,
+      "Assembly – tables & chairs": 1.4,
+      "Office": 9.3,
+      "Retail": 2.8,
+      "Residential – dwelling": 18.6
+    }
+  },
+  "AUS_NZ_GENERIC": {
+    "label": "Australia/NZ – generic",
+    "factors": {
+      "Assembly – standing": 0.65,
+      "Assembly – tables & chairs": 1.4,
+      "Office": 9.3,
+      "Retail": 3,
+      "Residential": 18
+    }
+  },
+  "EURO_GENERIC": {
+    "label": "European (generic)",
+    "factors": {
+      "Assembly – standing": 0.65,
+      "Assembly – tables & chairs": 1.2,
+      "Office": 10,
+      "Retail": 3,
+      "Residential": 18
+    }
+  },
+  "IND_NBC_2016": {
+    "label": "India NBC 2016 – starter",
+    "factors": {
+      "Assembly – standing": 0.65,
+      "Assembly – tables & chairs": 1.4,
+      "Classroom": 1.9,
+      "Office": 9.3,
+      "Retail": 3
+    }
+  },
+  "BRA_NBR": {
+    "label": "Brazil NBR (generic)",
+    "factors": {
+      "Assembly – standing": 0.65,
+      "Assembly – tables & chairs": 1.4,
+      "Office": 9.3,
+      "Retail": 3
+    }
+  },
+  "ZAF_SANS": {
+    "label": "South Africa SANS (generic)",
+    "factors": {
+      "Assembly – standing": 0.65,
+      "Office": 9.3,
+      "Retail": 3,
+      "Residential": 18
+    }
+  },
+  "JPN_BUILDING": {
+    "label": "Japan Building Standard (generic)",
+    "factors": {
+      "Assembly – standing": 0.6,
+      "Assembly – tables & chairs": 1.2,
+      "Office": 9,
+      "Retail": 2.8
+    }
+  },
+  "CHN_GB_50016": {
+    "label": "China GB 50016 (fire code) – generic",
+    "factors": {
+      "Assembly – standing": 0.6,
+      "Assembly – tables & chairs": 1.2,
+      "Office": 9.3,
+      "Retail": 3
+    }
+  }
+}

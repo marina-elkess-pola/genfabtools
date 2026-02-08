@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="description"
+    content="GenFab — fast, accessible occupant and fabrication planning tools. Simple calculators, exports and purchase flow for designers and builders." />
+  <link rel="icon" type="image/png" sizes="32x32" href="./park-favicon-v3.png" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Parking Engine · GenFabTools</title>
+  <!-- Accessibility & cross-browser CSS fallbacks: add standard properties alongside vendor-prefixed ones -->
+  <style>
+    /* Prevent unexpected text-size scaling on mobile (standard + webkit) */
+    html {
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+    }
+
+    /* User-select fallback for older Safari */
+    .no-select {
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+    }
+
+    /* Offline inverted helper (add unprefixed 'filter' for Chrome Android support) */
+    .offline.inverted {
+      -webkit-filter: invert(100%);
+      filter: invert(100%);
+    }
+
+    /* Backdrop filter fallback (add webkit-prefixed for Safari) */
+    .backdrop-blur {
+      -webkit-backdrop-filter: blur(8px);
+      backdrop-filter: blur(8px);
+    }
+
+    /* Keep forced color behavior consistent where supported */
+    :root {
+      forced-color-adjust: none;
+    }
+  </style>
+  <title>GenFabTools – OccuCalc</title>
+  <!-- Ensure relative asset paths work when served from subdirectories -->
+  <base href="./">
+  <!-- Inter font for UI (variable) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Display font: Inter; Body font: DM Sans -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@600;800&family=DMSans:wght@400;500&display=swap"
+    rel="stylesheet">
+  <!-- PWA manifest -->
+  <link rel="manifest" href="/manifest.json" />
+  <style>
+    /* Force header/account buttons visible in the dev server served UI */
+    .MuiAppBar-root .MuiToolbar-root .MuiButton-root,
+    .app-header .account-button,
+    .app-header .logout-button {
+      background-color: #e6e6e6 !important;
+      color: #111 !important;
+      border-color: #d1d5db !important;
+      box-shadow: none !important;
+      text-transform: none !important;
+      font-weight: 700 !important;
+      opacity: 1 !important;
+    }
+
+    .MuiAppBar-root .MuiToolbar-root .MuiButton-root.Mui-disabled,
+    .app-header .logout-button.disabled {
+      opacity: 1 !important;
+      color: #111 !important;
+      background-color: #e6e6e6 !important;
+    }
+  </style>
+  <style>
+    /* Emergency high-specificity fallback: force any header text/buttons to be visible */
+    header,
+    .app-header,
+    .site-header,
+    .topbar,
+    .MuiToolbar-root {
+      color: #111 !important;
+      opacity: 1 !important;
+    }
+
+    header *,
+    .app-header * {
+      color: inherit !important;
+      opacity: 1 !important;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+
+</html>

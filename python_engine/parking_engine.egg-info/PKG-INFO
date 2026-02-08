@@ -1,0 +1,5 @@
+Metadata-Version: 2.1
+Name: parking-engine
+Version: 0.5.0
+Summary: GenFabTools Parking Engine - Feasibility-grade parking layout generation
+Requires-Python: >=3.8

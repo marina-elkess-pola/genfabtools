@@ -1,0 +1,211 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.6;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: #213547;
+  /* muted navy */
+  background-color: #ffffff;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Enable smooth scrolling for in-page anchor navigation */
+html {
+  scroll-behavior: smooth;
+  height: 100%;
+}
+
+a {
+  font-weight: 500;
+  color: #ffffff;
+  text-decoration: inherit;
+}
+
+a:hover {
+  color: #535bf2;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  height: 100%;
+  background-color: #fbfbfc;
+  /* very light */
+  color: #213547;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Parking Engine app shell: strictly viewport-locked */
+body.parking-engine-app {
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
+}
+
+/* offset main content for fixed header */
+main {
+  padding-top: 4rem;
+  /* header height */
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
+h1.no-background,
+h1.no-background * {
+  /* keep text backgrounds transparent for overlays, but don't force debug borders */
+  background: none !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  background-clip: text !important;
+  box-shadow: none !important;
+}
+
+button {
+  border-radius: 9999px;
+  /* pill buttons */
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 600;
+  font-family: inherit;
+  background-color: #0f172a;
+  color: white;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+button:hover {
+  transform: translateY(-2px);
+}
+
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color: #213547;
+    background-color: #ffffff;
+  }
+
+  a:hover {
+    color: #747bff;
+  }
+
+  button {
+    background-color: #f9f9f9;
+  }
+}
+
+/* Apply global reset */
+/* Remove aggressive global resets that interfere with Tailwind and normal element styles.
+   Keep a safe default box-sizing and preserve normal backgrounds, borders and outlines. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Override dropdown link colors and remove underlines */
+.dropdown a,
+.dropdown a:visited {
+  color: #ffffff !important;
+  text-decoration: none !important;
+}
+
+.dropdown a:hover,
+.dropdown a:focus {
+  color: #cccccc !important;
+  text-decoration: none !important;
+}
+
+.dropdown a:active {
+  color: #ddd !important;
+  /* adjust this color as needed for the click effect */
+  text-decoration: none !important;
+}
+
+/* Dropdown links override */
+.dropdown a,
+.dropdown a:visited,
+.dropdown a:hover,
+.dropdown a:focus {
+  color: #fff !important;
+  text-decoration: none !important;
+}
+
+/* Glass-like text styling for use on translucent panels */
+.glass-text {
+  /* subtle bright highlight above */
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.85),
+    /* faint top highlight */
+    0 6px 18px rgba(2, 6, 23, 0.18);
+  /* soft drop shadow for depth */
+  /* ensure legibility on translucent backgrounds */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.glass-subtext {
+  text-shadow: 0 0.5px 0 rgba(255, 255, 255, 0.9), 0 4px 12px rgba(2, 6, 23, 0.12);
+}
+
+/* Engraved text for glass panels (recessed appearance) */
+.engraved-text {
+  color: rgba(10, 13, 20, 0.95);
+  /* light top highlight and subtle dark inset for engraved effect */
+  text-shadow:
+    0 -1px 0 rgba(255, 255, 255, 0.85),
+    0 1px 0 rgba(0, 0, 0, 0.55),
+    0 8px 18px rgba(2, 6, 23, 0.12);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.engraved-subtext {
+  color: rgba(30, 36, 46, 0.9);
+  text-shadow: 0 -0.8px 0 rgba(255, 255, 255, 0.8), 0 6px 14px rgba(2, 6, 23, 0.08);
+}
+
+/* Custom scrollbar for SiteGen sidebar */
+.sitegen-sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sitegen-sidebar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+.sitegen-sidebar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.sitegen-sidebar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Firefox scrollbar */
+.sitegen-sidebar {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f5f9;
+}

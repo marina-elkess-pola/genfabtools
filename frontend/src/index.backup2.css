@@ -1,0 +1,21 @@
+/* eslint-disable */
+/* stylelint-disable at-rule-no-unknown */
+/* index.backup2.css
+   This file is a backup of the current index.css (Reference #2).
+   It preserves the original Tailwind directives and any custom styles.
+*/
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* You can add any custom styles below */
+
+.dropdown a,
+.dropdown a:visited,
+.dropdown a:hover,
+.dropdown a:focus,
+.dropdown a:active {
+    color: #fff !important;
+    text-decoration: none !important;
+}

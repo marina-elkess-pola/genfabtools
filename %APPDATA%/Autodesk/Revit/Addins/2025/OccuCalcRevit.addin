@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>OccuCalcRevit</Name>
+    <Assembly>%APPDATA%\\Autodesk\\Revit\\Addins\\2025\\OccuCalcRevitAddin.dll</Assembly>
+    <AddInId>7B0C8E1C-0000-0000-0000-000000000000</AddInId>
+    <FullClassName>OccuCalcRevit.App</FullClassName>
+    <Vendor>OccuCalc</Vendor>
+    <VendorId>OccuCalc</VendorId>
+    <Description>Imports Occupancy CSV from OccuCalc incoming folder</Description>
+  </AddIn>
+</RevitAddIns>
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>OccuCalcRevit</Name>
+    <Assembly>%APPDATA%\\Autodesk\\Revit\\Addins\\2025\\OccuCalcRevitAddin.dll</Assembly>
+    <AddInId>7B0C8E1C-0000-0000-0000-000000000000</AddInId>
+    <FullClassName>OccuCalcRevit.App</FullClassName>
+    <Vendor>OccuCalc</Vendor>
+    <VendorId>OccuCalc</VendorId>
+    <Description>Imports Occupancy CSV from OccuCalc incoming folder</Description>
+  </AddIn>
+</RevitAddIns>

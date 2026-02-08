@@ -1,0 +1,233 @@
+{
+    "US": {
+        "name": "United States (IBC/NFPA)",
+        "accessiblePercent": 2,
+        "extinguisherRatio": 50,
+        "evPercentage": 5,
+        "sprinklerRequired": "Depends on occupancy and structure (see NFPA)",
+        "mechanicalVentilation": "Mechanical ventilation typically required for enclosed garages per local code",
+        "electricalNotes": "EV charging infrastructure recommended; electrical distribution per NEC",
+        "references": [
+            "IBC",
+            "NFPA 88A",
+            "NFPA 101",
+            "NEC"
+        ]
+    },
+    "UK": {
+        "name": "United Kingdom (BS / Approved Document B)",
+        "accessiblePercent": 6,
+        "extinguisherRatio": 75,
+        "evPercentage": 10,
+        "sprinklerRequired": "Not always required; dependent on use and size",
+        "mechanicalVentilation": "Stack effect and mechanical extract guidance in BS standards",
+        "electricalNotes": "Follow BS 7671 for electrical installations; EV charging guidance applies",
+        "references": [
+            "Approved Document B",
+            "BS 7346",
+            "BS 7671"
+        ]
+    },
+    "CA": {
+        "name": "Canada (NBC)",
+        "accessiblePercent": 4,
+        "extinguisherRatio": 60,
+        "evPercentage": 7,
+        "sprinklerRequired": "Per NBC and provincial amendments",
+        "mechanicalVentilation": "Mechanical ventilation per NBC Section 6",
+        "electricalNotes": "Follow Canadian Electrical Code; EV planning advised",
+        "references": [
+            "NBCC",
+            "NFPA 88A"
+        ]
+    },
+    "AU": {
+        "name": "Australia (AS/NZS)",
+        "accessiblePercent": 4,
+        "extinguisherRatio": 80,
+        "evPercentage": 8,
+        "sprinklerRequired": "Depends on building classification and local regs",
+        "mechanicalVentilation": "AS 1668 and local codes govern ventilation",
+        "electricalNotes": "AS/NZS 3000 and EV-ready requirements",
+        "references": [
+            "AS 1668",
+            "AS/NZS 3000"
+        ]
+    },
+    "UAE": {
+        "name": "UAE (Dubai/Bldg Code)",
+        "accessiblePercent": 2,
+        "extinguisherRatio": 50,
+        "evPercentage": 5,
+        "sprinklerRequired": "Often required for enclosed multi-storey garages",
+        "mechanicalVentilation": "Mechanical ventilation commonly required",
+        "electricalNotes": "Local DEWA and authority rules apply",
+        "references": [
+            "Dubai Building Code",
+            "NFPA references"
+        ]
+    },
+    "KSA": {
+        "name": "Saudi Arabia (SBC / SASO)",
+        "accessiblePercent": 2,
+        "extinguisherRatio": 50,
+        "evPercentage": 3,
+        "sprinklerRequired": "Depends on building classification and enclosed parking — consult SBC",
+        "mechanicalVentilation": "Mechanical ventilation for enclosed garages per local code",
+        "electricalNotes": "Follow SASO and local authority wiring regs; EV infrastructure emerging",
+        "references": [
+            "Saudi Building Code (SBC)"
+        ]
+    },
+    "IN": {
+        "name": "India (NBC/IS)",
+        "accessiblePercent": 5,
+        "extinguisherRatio": 75,
+        "evPercentage": 2,
+        "sprinklerRequired": "Usually not mandatory for small open parking; check NBC/state rules for enclosed garages",
+        "mechanicalVentilation": "Natural or mechanical ventilation guidance per NBC",
+        "electricalNotes": "Follow IS and local regulations for chargers",
+        "references": [
+            "NBC India",
+            "BIS/IS standards"
+        ]
+    },
+    "SG": {
+        "name": "Singapore (SCDF / BCA)",
+        "accessiblePercent": 4,
+        "extinguisherRatio": 60,
+        "evPercentage": 10,
+        "sprinklerRequired": "May be required for enclosed and underground garages per BCA/SCDF",
+        "mechanicalVentilation": "Strict guidance for enclosed carparks; refer to codes",
+        "electricalNotes": "Strong EV roll-out policies; plan for charging infrastructure",
+        "references": [
+            "Building and Construction Authority (BCA)",
+            "SCDF guidelines"
+        ]
+    },
+    "DE": {
+        "name": "Germany (DIN / VDE)",
+        "accessiblePercent": 3,
+        "extinguisherRatio": 80,
+        "evPercentage": 8,
+        "sprinklerRequired": "Determined by building regulations and fire authority",
+        "mechanicalVentilation": "Requirements for enclosed garages per DIN standards",
+        "electricalNotes": "Follow VDE and local regulations; EV infrastructure guidance available",
+        "references": [
+            "DIN standards",
+            "VDE"
+        ]
+    },
+    "FR": {
+        "name": "France (NF / EU regs)",
+        "accessiblePercent": 5,
+        "extinguisherRatio": 70,
+        "evPercentage": 8,
+        "sprinklerRequired": "Depends on structure and local fire code",
+        "mechanicalVentilation": "Refer to French building code and EN standards",
+        "electricalNotes": "EV deployment guided by local and EU directives",
+        "references": [
+            "French Building Code",
+            "EN standards"
+        ]
+    },
+    "BR": {
+        "name": "Brazil (ABNT)",
+        "accessiblePercent": 4,
+        "extinguisherRatio": 80,
+        "evPercentage": 3,
+        "sprinklerRequired": "Depends on building classification and local municipal rules",
+        "mechanicalVentilation": "Local codes govern enclosed parking ventilation",
+        "electricalNotes": "Follow ABNT and local utility guidance for chargers",
+        "references": [
+            "ABNT standards"
+        ]
+    },
+    "ZA": {
+        "name": "South Africa (SANS)",
+        "accessiblePercent": 4,
+        "extinguisherRatio": 75,
+        "evPercentage": 2,
+        "sprinklerRequired": "Dependent on use and structure; consult SANS/local fire authority",
+        "mechanicalVentilation": "Guidance per SANS and local codes",
+        "electricalNotes": "EV infrastructure developing; coordinate with local utilities",
+        "references": [
+            "SANS",
+            "Local municipal bylaws"
+        ]
+    },
+    "EG": {
+        "name": "Egypt (EAB / Egyptian Codes)",
+        "accessiblePercent": 2,
+        "extinguisherRatio": 60,
+        "evPercentage": 1,
+        "sprinklerRequired": "Often required for enclosed or basement carparks; consult Egyptian fire codes",
+        "mechanicalVentilation": "Mechanical ventilation for enclosed/basement parking is commonly required",
+        "electricalNotes": "Follow Egyptian regulations and local utility requirements for EV chargers",
+        "references": [
+            "Egyptian Building Code",
+            "Local Governorate fire authority"
+        ]
+    },
+    "TR": {
+        "name": "Turkey (TS / National regs)",
+        "accessiblePercent": 3,
+        "extinguisherRatio": 75,
+        "evPercentage": 3,
+        "sprinklerRequired": "Based on building classification and fire code",
+        "mechanicalVentilation": "Refer to national standards for enclosed garages",
+        "electricalNotes": "Follow local electrical code and distribution operator guidance",
+        "references": [
+            "Turkish Standards (TS)"
+        ]
+    },
+    "QA": {
+        "name": "Qatar (QCD / Local regs)",
+        "accessiblePercent": 2,
+        "extinguisherRatio": 50,
+        "evPercentage": 4,
+        "sprinklerRequired": "Often required for enclosed multi-storey garages",
+        "mechanicalVentilation": "Typically required for enclosed and basement parking",
+        "electricalNotes": "Coordinate with Kahramaa and local authority for EV infrastructure",
+        "references": [
+            "Qatar Construction Specifications"
+        ]
+    },
+    "KW": {
+        "name": "Kuwait (Local regs)",
+        "accessiblePercent": 2,
+        "extinguisherRatio": 50,
+        "evPercentage": 2,
+        "sprinklerRequired": "Dependent on enclosure and structure",
+        "mechanicalVentilation": "Enclosed parking usually requires mechanical ventilation",
+        "electricalNotes": "Follow local utility rules for charger installations",
+        "references": [
+            "Kuwait Municipality regulations"
+        ]
+    },
+    "ID": {
+        "name": "Indonesia (SNI / Local regs)",
+        "accessiblePercent": 3,
+        "extinguisherRatio": 80,
+        "evPercentage": 1,
+        "sprinklerRequired": "Depends on building use and enclosure",
+        "mechanicalVentilation": "Refer to SNI and local guidance",
+        "electricalNotes": "Local utility and SNI guidance for electrical installations",
+        "references": [
+            "SNI standards"
+        ]
+    },
+    "MY": {
+        "name": "Malaysia (MS / Local regs)",
+        "accessiblePercent": 3,
+        "extinguisherRatio": 75,
+        "evPercentage": 2,
+        "sprinklerRequired": "Determined by building code and fire authority",
+        "mechanicalVentilation": "Guidance for enclosed carparks in local codes",
+        "electricalNotes": "Coordinate with TNB and local authorities for EV readiness",
+        "references": [
+            "MS standards",
+            "Local municipal bylaws"
+        ]
+    }
+}

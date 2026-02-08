@@ -1,0 +1,10 @@
+{
+  "ExpandedNodes": [
+    "",
+    "\\tools",
+    "\\tools\\revit_addin",
+    "\\tools\\revit_addin\\ParkCore.RevitAddin"
+  ],
+  "SelectedNode": "\\tools\\revit_addin\\ParkCore.RevitAddin\\ParkCore.RevitAddin.csproj",
+  "PreviewInSolutionExplorer": false
+}

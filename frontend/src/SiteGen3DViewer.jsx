@@ -1,0 +1,6090 @@
+import React, { useRef, useEffect, useMemo, useCallback, useState, forwardRef, useImperativeHandle } from 'react';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import pointInPolygon from 'robust-point-in-polygon';
+
+/**
+ * SiteGen3DViewer - Interactive 3D visualization using Three.js
+ * 
+ * Features:
+ * - Orbit controls (rotate, zoom, pan)
+ * - Real-time updates when parameters change
+ * - Building type specific geometry
+ * - Interactive drag editing of building heights
+ * - Polygon-based parking layouts for irregular shapes
+ */
+
+/**
+ * Check if a point is inside a polygon
+ * Returns true if point is inside or on boundary
+ */
+const isPointInPolygon = (point, polygon) => {
+    if (!polygon || polygon.length < 3) return false;
+    const pts = polygon.map(p => [p.x, p.y]);
+    const result = pointInPolygon(pts, [point.x, point.y]);
+    return result <= 0; // -1 (inside) or 0 (on boundary) = true
+};
+
+/**
+ * Check if a rectangle is fully inside a polygon
+ */
+const isRectInPolygon = (x, y, w, h, polygon) => {
+    const corners = [
+        { x: x, y: y },
+        { x: x + w, y: y },
+        { x: x + w, y: y + h },
+        { x: x, y: y + h }
+    ];
+    return corners.every(corner => isPointInPolygon(corner, polygon));
+};
+
+const SiteGen3DViewer = forwardRef(function SiteGen3DViewer({
+    boundary,
+    exclusions,
+    buildingType,
+    massingType,
+    massingConfig,
+    parkingLayout, // Shared parking layout from parent (synced with 2D view)
+    setbacks,
+    lotCoverage,
+    heightLimit,
+    onParamChange, // Callback to update shared parameters when dragging
+    // Individual building parameters for multi-building layouts
+    individualBuildingParams = {}, // { buildingIndex: { floors: 5 }, ... }
+    onIndividualBuildingParamChange, // (buildingIndex, key, value) => void
+    // Template building positions (for moving template buildings)
+    templateBuildingPositions = {}, // { buildingIndex: { x: offset, z: offset }, ... }
+    selectedTemplateBuilding = null, // Currently selected template building index
+    onSelectTemplateBuilding, // (buildingIndex) => void - select a template building
+    onMoveTemplateBuilding, // (buildingIndex, newX, newZ) => void - move a template building
+    // Amenity positions (for moving pools, gardens, courtyards)
+    amenityPositions = {}, // { amenityId: { x: offset, z: offset }, ... }
+    selectedAmenity = null, // Currently selected amenity id
+    onSelectAmenity, // (amenityId) => void - select an amenity
+    onMoveAmenity, // (amenityId, newX, newZ) => void - move an amenity
+    // Free-form building placement
+    customBuildings = [],
+    selectedBuildingId = null, // Smart selection
+    isDrawingShape = false, // Shift+click drawing mode
+    newBuildingConfig = {}, // Config for new buildings
+    polygonBuildingConfig = {}, // Config for polygon buildings
+    onAddBuilding, // (x, z) => void
+    onDeleteBuilding, // (buildingId) => void
+    onSelectBuilding, // (buildingId) => void - select building
+    onMoveBuilding, // (buildingId, newX, newZ) => void - move building
+    // Polygon drawing
+    drawingPolygon = [],
+    onAddPolygonPoint, // (x, z) => void
+    onFinishPolygon, // () => void
+    onStartDrawing, // () => void - start drawing mode (Shift+click)
+    // Vertex editing
+    onUpdateVertex, // (buildingId, vertexIndex, newX, newZ) => void
+    // Boundary editing
+    isEditingBoundary = false,
+    onUpdateBoundaryVertex, // (index, newX, newY) => void
+    onAddBoundaryVertex, // (afterIndex, x, y) => void
+    onDeleteBoundaryVertex, // (index) => void
+    // Snapping settings
+    snapEnabled = true,
+    snapToGrid = true,
+    gridSize = 10,
+    // Zoom callback
+    onZoomChange, // (zoomPercent) => void - called when zoom changes
+    // 3D visualization options - Vehicle Tracking
+    vehicles = [], // Array of tracked vehicles: [{ id, type, x, y, rotation, trail: [{x, y, rotation}] }, ...]
+    selectedVehicle = null, // Currently selected vehicle id
+    vehicleTrailsVisible = true, // Show movement trails
+    vehicleTurningRadiusVisible = true, // Show turning radius indicator
+    showVehiclePanel = false, // Is vehicle panel open (enables keyboard controls)
+    vehicleSpeed = 2, // Movement speed (feet per keypress)
+    onSelectVehicle, // (vehicleId) => void - select a vehicle
+    onShowVehiclePanel, // () => void - show vehicle panel when clicking a vehicle
+    onMoveVehicle, // (vehicleId, distance) => void - move forward/backward
+    onSteerVehicle, // (vehicleId, steerAngle, distance) => void - steer while moving
+    onRotateVehicle, // (vehicleId, deltaAngle) => void - rotate in place
+    onClearAllTrails, // () => void - clear all vehicle trails
+}, ref) {
+    const containerRef = useRef(null);
+    const sceneRef = useRef(null);
+    const rendererRef = useRef(null);
+    const cameraRef = useRef(null);
+    const controlsRef = useRef(null);
+    const animationRef = useRef(null);
+    const buildingsGroupRef = useRef(null);
+    const handlesGroupRef = useRef(null);
+    const groundPlaneRef = useRef(null); // For click-to-place
+    const vertexHandlesRef = useRef(null); // For vertex editing
+    const boundaryHandlesRef = useRef(null); // For boundary editing
+    const stableCenterRef = useRef(null); // Stable center point to prevent shifting during drag
+    const initialCameraSetRef = useRef(false); // Track if initial camera position has been set
+
+    // Precision editing state (Rhino-like controls)
+    const [coordDisplay, setCoordDisplay] = useState(null); // { x, y, screenX, screenY } for overlay
+    const [editingVertex, setEditingVertex] = useState(null); // { index, x, y } for precise input dialog
+    const dragStartPosRef = useRef(null); // Starting position for ortho mode
+    const isShiftHeldRef = useRef(false); // Track shift key for ortho mode
+
+    // Refs to hold latest callback/state for use in event handlers
+    const selectedBuildingIdRef = useRef(selectedBuildingId);
+    const isDrawingShapeRef = useRef(isDrawingShape);
+    const isEditingBoundaryRef = useRef(isEditingBoundary);
+    const newBuildingConfigRef = useRef(newBuildingConfig);
+    const onAddBuildingRef = useRef(onAddBuilding);
+    const onDeleteBuildingRef = useRef(onDeleteBuilding);
+    const onSelectBuildingRef = useRef(onSelectBuilding);
+    const onMoveBuildingRef = useRef(onMoveBuilding);
+    const boundaryRef = useRef(boundary);
+    const onAddPolygonPointRef = useRef(onAddPolygonPoint);
+    const onFinishPolygonRef = useRef(onFinishPolygon);
+    const onStartDrawingRef = useRef(onStartDrawing);
+    const onUpdateVertexRef = useRef(onUpdateVertex);
+    const onUpdateBoundaryVertexRef = useRef(onUpdateBoundaryVertex);
+    const onAddBoundaryVertexRef = useRef(onAddBoundaryVertex);
+    const onDeleteBoundaryVertexRef = useRef(onDeleteBoundaryVertex);
+    const customBuildingsRef = useRef(customBuildings);
+    const snapEnabledRef = useRef(snapEnabled);
+    const snapToGridRef = useRef(snapToGrid);
+    const gridSizeRef = useRef(gridSize);
+    const onIndividualBuildingParamChangeRef = useRef(onIndividualBuildingParamChange);
+    const templateBuildingPositionsRef = useRef(templateBuildingPositions);
+    const selectedTemplateBuildingRef = useRef(selectedTemplateBuilding);
+    const onSelectTemplateBuildingRef = useRef(onSelectTemplateBuilding);
+    const onMoveTemplateBuildingRef = useRef(onMoveTemplateBuilding);
+    const amenityPositionsRef = useRef(amenityPositions);
+    const selectedAmenityRef = useRef(selectedAmenity);
+    const onSelectAmenityRef = useRef(onSelectAmenity);
+    const onMoveAmenityRef = useRef(onMoveAmenity);
+
+    // Vehicle control refs
+    const vehiclesRef = useRef(vehicles);
+    const selectedVehicleRef = useRef(selectedVehicle);
+    const showVehiclePanelRef = useRef(showVehiclePanel);
+    const vehicleSpeedRef = useRef(vehicleSpeed);
+    const onSelectVehicleRef = useRef(onSelectVehicle);
+    const onShowVehiclePanelRef = useRef(onShowVehiclePanel);
+    const onMoveVehicleRef = useRef(onMoveVehicle);
+    const onSteerVehicleRef = useRef(onSteerVehicle);
+    const onRotateVehicleRef = useRef(onRotateVehicle);
+    const onClearAllTrailsRef = useRef(onClearAllTrails);
+
+    // Snap helper function for 3D
+    const applySnap = useCallback((x, z) => {
+        if (!snapEnabledRef.current || !snapToGridRef.current) return { x, z };
+        const gs = gridSizeRef.current;
+        return {
+            x: Math.round(x / gs) * gs,
+            z: Math.round(z / gs) * gs
+        };
+    }, []);
+
+    // Keep refs up to date
+    useEffect(() => {
+        selectedBuildingIdRef.current = selectedBuildingId;
+        isDrawingShapeRef.current = isDrawingShape;
+        isEditingBoundaryRef.current = isEditingBoundary;
+        newBuildingConfigRef.current = newBuildingConfig;
+        onAddBuildingRef.current = onAddBuilding;
+        onDeleteBuildingRef.current = onDeleteBuilding;
+        onSelectBuildingRef.current = onSelectBuilding;
+        onMoveBuildingRef.current = onMoveBuilding;
+        boundaryRef.current = boundary;
+        onAddPolygonPointRef.current = onAddPolygonPoint;
+        onFinishPolygonRef.current = onFinishPolygon;
+        onStartDrawingRef.current = onStartDrawing;
+        onUpdateVertexRef.current = onUpdateVertex;
+        onUpdateBoundaryVertexRef.current = onUpdateBoundaryVertex;
+        onAddBoundaryVertexRef.current = onAddBoundaryVertex;
+        onDeleteBoundaryVertexRef.current = onDeleteBoundaryVertex;
+        customBuildingsRef.current = customBuildings;
+        snapEnabledRef.current = snapEnabled;
+        snapToGridRef.current = snapToGrid;
+        gridSizeRef.current = gridSize;
+        onIndividualBuildingParamChangeRef.current = onIndividualBuildingParamChange;
+        templateBuildingPositionsRef.current = templateBuildingPositions;
+        selectedTemplateBuildingRef.current = selectedTemplateBuilding;
+        onSelectTemplateBuildingRef.current = onSelectTemplateBuilding;
+        onMoveTemplateBuildingRef.current = onMoveTemplateBuilding;
+        amenityPositionsRef.current = amenityPositions;
+        selectedAmenityRef.current = selectedAmenity;
+        onSelectAmenityRef.current = onSelectAmenity;
+        onMoveAmenityRef.current = onMoveAmenity;
+        // Vehicle control refs
+        vehiclesRef.current = vehicles;
+        selectedVehicleRef.current = selectedVehicle;
+        showVehiclePanelRef.current = showVehiclePanel;
+        vehicleSpeedRef.current = vehicleSpeed;
+        onSelectVehicleRef.current = onSelectVehicle;
+        onShowVehiclePanelRef.current = onShowVehiclePanel;
+        onMoveVehicleRef.current = onMoveVehicle;
+        onSteerVehicleRef.current = onSteerVehicle;
+        onRotateVehicleRef.current = onRotateVehicle;
+        onClearAllTrailsRef.current = onClearAllTrails;
+    }, [selectedBuildingId, isDrawingShape, isEditingBoundary, newBuildingConfig, onAddBuilding, onDeleteBuilding, onSelectBuilding, onMoveBuilding, boundary, onAddPolygonPoint, onFinishPolygon, onStartDrawing, onUpdateVertex, onUpdateBoundaryVertex, onAddBoundaryVertex, onDeleteBoundaryVertex, customBuildings, snapEnabled, snapToGrid, gridSize, onIndividualBuildingParamChange, templateBuildingPositions, selectedTemplateBuilding, onSelectTemplateBuilding, onMoveTemplateBuilding, amenityPositions, selectedAmenity, onSelectAmenity, onMoveAmenity, vehicles, selectedVehicle, showVehiclePanel, vehicleSpeed, onSelectVehicle, onShowVehiclePanel, onMoveVehicle, onSteerVehicle, onRotateVehicle, onClearAllTrails]);
+
+    // Boundary drag state
+    const isDraggingBoundaryVertexRef = useRef(false);
+    const dragBoundaryVertexIndexRef = useRef(null);
+
+    // Boundary edge drag state (for dragging entire edges)
+    const isDraggingBoundaryEdgeRef = useRef(false);
+    const dragBoundaryEdgeIndexRef = useRef(null);
+    const dragBoundaryEdgeStartRef = useRef(null); // { mouseX, mouseZ, vertices: [{x,y}, {x,y}] }
+
+    // Vertex drag state
+    const isDraggingVertexRef = useRef(false);
+    const dragVertexDataRef = useRef(null); // { buildingId, vertexIndex }
+
+    // Building drag state (for moving buildings)
+    const isDraggingBuildingRef = useRef(false);
+    const dragBuildingIdRef = useRef(null);
+
+    // Template building drag state (for moving template buildings like garden apartments)
+    const isDraggingTemplateBuildingRef = useRef(false);
+    const dragTemplateBuildingIndexRef = useRef(null);
+    const dragTemplateBuildingStartRef = useRef({ x: 0, z: 0 }); // Original position
+
+    // Click vs Drag detection - prevents accidental building placement when orbiting
+    const mouseDownPosRef = useRef({ x: 0, y: 0 });
+    const mouseMovedRef = useRef(false);
+    const CLICK_THRESHOLD = 5; // pixels - if mouse moves more than this, it's a drag
+
+    // Pending click data for building placement (only execute on mouseup if no drag)
+    const pendingClickRef = useRef(null); // { siteX, siteZ, isPolygonPoint }
+
+    // Drag state
+    const isDraggingRef = useRef(false);
+    const dragObjectRef = useRef(null);
+    const dragPlaneRef = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
+    const dragStartYRef = useRef(0);
+    const dragStartXRef = useRef(0);
+    const dragStartValueRef = useRef(0);
+    const dragDirectionRef = useRef(null); // 'height', 'width', 'depth'
+    const raycasterRef = useRef(new THREE.Raycaster());
+    const mouseRef = useRef(new THREE.Vector2());
+    const dragStartMouseRef = useRef({ x: 0, y: 0 });
+
+    // Building type colors
+    const typeColors = useMemo(() => ({
+        multifamily: 0x8b5cf6,   // Purple
+        singlefamily: 0x22c55e, // Green
+        industrial: 0xeab308,   // Yellow
+        hotel: 0xec4899,        // Pink
+        retail: 0xf97316,       // Orange
+        datacenter: 0x0ea5e9,   // Sky blue
+        parking: 0x9ca3af,      // Gray
+    }), []);
+
+    // Zoom control functions
+    const handleZoomIn = useCallback(() => {
+        if (!cameraRef.current || !controlsRef.current) return;
+        const camera = cameraRef.current;
+        const controls = controlsRef.current;
+        const direction = new THREE.Vector3();
+        camera.getWorldDirection(direction);
+        camera.position.addScaledVector(direction, 50); // Move camera forward
+        controls.update();
+    }, []);
+
+    const handleZoomOut = useCallback(() => {
+        if (!cameraRef.current || !controlsRef.current) return;
+        const camera = cameraRef.current;
+        const controls = controlsRef.current;
+        const direction = new THREE.Vector3();
+        camera.getWorldDirection(direction);
+        camera.position.addScaledVector(direction, -50); // Move camera backward
+        controls.update();
+    }, []);
+
+    const handleFitToExtents = useCallback(() => {
+        if (!cameraRef.current || !controlsRef.current || !boundaryRef.current) return;
+        const bounds = boundaryRef.current;
+        if (!bounds || bounds.length < 3) return;
+
+        const camera = cameraRef.current;
+        const controls = controlsRef.current;
+
+        const xs = bounds.map(p => p.x);
+        const ys = bounds.map(p => p.y);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+        const siteW = maxX - minX;
+        const siteD = maxY - minY;
+        const maxDim = Math.max(siteW, siteD);
+
+        // Set camera to fit the site
+        const camDist = maxDim * 1.5;
+        camera.position.set(camDist * 0.7, camDist * 0.5, camDist * 0.7);
+        controls.target.set(0, 30, 0);
+        controls.update();
+    }, []);
+
+    const handleResetView = useCallback(() => {
+        if (!cameraRef.current || !controlsRef.current) return;
+        const camera = cameraRef.current;
+        const controls = controlsRef.current;
+
+        // Reset to default isometric-like view
+        camera.position.set(300, 300, 300);
+        controls.target.set(0, 30, 0);
+        controls.update();
+    }, []);
+
+    // Expose zoom methods to parent via ref
+    useImperativeHandle(ref, () => ({
+        zoomIn: handleZoomIn,
+        zoomOut: handleZoomOut,
+        fitToExtents: handleFitToExtents,
+        resetView: handleResetView,
+    }), [handleZoomIn, handleZoomOut, handleFitToExtents, handleResetView]);
+
+    // Initialize Three.js scene
+    useEffect(() => {
+        if (!containerRef.current) return;
+
+        const container = containerRef.current;
+        let width = container.clientWidth;
+        let height = container.clientHeight;
+
+        // If container is hidden (0 dimensions), use fallback values
+        // ResizeObserver will update when it becomes visible
+        if (width === 0) width = 800;
+        if (height === 0) height = 600;
+
+        // Scene
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xf8fafc); // Light slate matching 2D canvas
+        sceneRef.current = scene;
+
+        // Camera
+        const camera = new THREE.PerspectiveCamera(45, width / height, 1, 10000);
+        camera.position.set(300, 300, 300);
+        camera.lookAt(0, 0, 0);
+        cameraRef.current = camera;
+
+        // Renderer
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(width, height);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
+        rendererRef.current = renderer;
+
+        // Orbit Controls
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.screenSpacePanning = true;
+        controls.minDistance = 50;
+        controls.maxDistance = 2000;
+        controls.maxPolarAngle = Math.PI / 2.1; // Prevent going below ground
+        controlsRef.current = controls;
+
+        // Track zoom level changes
+        // Default distance is ~520 (from position 300,300,300), treat as 100%
+        const defaultDistance = 520;
+        const updateZoomLevel = () => {
+            if (onZoomChange && cameraRef.current && controlsRef.current) {
+                const distance = cameraRef.current.position.distanceTo(controlsRef.current.target);
+                const zoomPercent = Math.round((defaultDistance / distance) * 100);
+                onZoomChange(zoomPercent);
+            }
+        };
+        controls.addEventListener('change', updateZoomLevel);
+        // Initial zoom level
+        updateZoomLevel();
+
+        // Lights
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(200, 400, 200);
+        directionalLight.castShadow = true;
+        directionalLight.shadow.mapSize.width = 2048;
+        directionalLight.shadow.mapSize.height = 2048;
+        directionalLight.shadow.camera.near = 10;
+        directionalLight.shadow.camera.far = 1500;
+        directionalLight.shadow.camera.left = -500;
+        directionalLight.shadow.camera.right = 500;
+        directionalLight.shadow.camera.top = 500;
+        directionalLight.shadow.camera.bottom = -500;
+        scene.add(directionalLight);
+
+        // Grid helper - positioned slightly below parking surfaces to avoid z-fighting
+        const gridHelper = new THREE.GridHelper(500, 50, 0x888888, 0x999999); // Subtle gray grid
+        gridHelper.position.y = -0.01; // Below all parking surfaces
+        gridHelper.material.opacity = 0.15;
+        gridHelper.material.transparent = true;
+        scene.add(gridHelper);
+
+        // Buildings group - mirror X-axis to match 2D view when looking from above
+        const buildingsGroup = new THREE.Group();
+        buildingsGroup.scale.x = -1; // MIRROR X to match 2D coordinate system
+        scene.add(buildingsGroup);
+        buildingsGroupRef.current = buildingsGroup;
+
+        // Handles group (for drag handles) - also mirror X to match buildings
+        const handlesGroup = new THREE.Group();
+        handlesGroup.scale.x = -1; // MIRROR X to match buildings group
+        scene.add(handlesGroup);
+        handlesGroupRef.current = handlesGroup;
+
+        // Vertex handles group (for polygon vertex editing) - also mirror X
+        const vertexHandlesGroup = new THREE.Group();
+        vertexHandlesGroup.scale.x = -1; // MIRROR X to match buildings group
+        scene.add(vertexHandlesGroup);
+        vertexHandlesRef.current = vertexHandlesGroup;
+
+        // Boundary handles group (for boundary vertex editing) - also mirror X
+        const boundaryHandlesGroup = new THREE.Group();
+        boundaryHandlesGroup.scale.x = -1; // MIRROR X to match buildings group
+        scene.add(boundaryHandlesGroup);
+        boundaryHandlesRef.current = boundaryHandlesGroup;
+
+        // Animation loop
+        const animate = () => {
+            animationRef.current = requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        };
+        animate();
+
+        // Resize handler
+        const handleResize = () => {
+            const w = container.clientWidth;
+            const h = container.clientHeight;
+            // Skip if container is hidden (has 0 dimensions)
+            if (w === 0 || h === 0) return;
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w, h);
+        };
+        window.addEventListener('resize', handleResize);
+
+        // Use ResizeObserver to detect when container becomes visible (display: none -> block)
+        const resizeObserver = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                const { width, height } = entry.contentRect;
+                if (width > 0 && height > 0) {
+                    camera.aspect = width / height;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(width, height);
+                }
+            }
+        });
+        resizeObserver.observe(container);
+
+        // ================================================================
+        // INTERACTIVE DRAG HANDLERS
+        // ================================================================
+
+        const getMousePosition = (event) => {
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        };
+
+        const handleMouseDown = (event) => {
+            if (event.button !== 0) return; // Only left click
+
+            // Track mouse position for click vs drag detection
+            mouseDownPosRef.current = { x: event.clientX, y: event.clientY };
+            mouseMovedRef.current = false;
+            pendingClickRef.current = null;
+
+            getMousePosition(event);
+            raycasterRef.current.setFromCamera(mouseRef.current, camera);
+
+            const isDrawing = isDrawingShapeRef.current;
+            const isEditingBound = isEditingBoundaryRef.current;
+
+            // === Boundary Editing: Check for boundary vertex handles first ===
+            if (isEditingBound && boundaryHandlesRef.current) {
+                const boundaryIntersects = raycasterRef.current.intersectObjects(boundaryHandlesRef.current.children, true);
+                if (boundaryIntersects.length > 0) {
+                    const handle = boundaryIntersects[0].object;
+                    if (handle.userData && handle.userData.isBoundaryVertex !== undefined) {
+                        const vertexIdx = handle.userData.isBoundaryVertex;
+                        const bounds = boundaryRef.current;
+                        // Store starting position for ortho mode
+                        if (bounds && bounds[vertexIdx]) {
+                            dragStartPosRef.current = { x: bounds[vertexIdx].x, y: bounds[vertexIdx].y };
+                        }
+                        isDraggingBoundaryVertexRef.current = true;
+                        dragBoundaryVertexIndexRef.current = vertexIdx;
+                        controls.enabled = false;
+                        renderer.domElement.style.cursor = 'grabbing';
+                        event.preventDefault();
+                        event.stopPropagation();
+                        return;
+                    }
+                    // Check for edge handles (drag to move entire edge)
+                    if (handle.userData && handle.userData.isBoundaryEdge !== undefined) {
+                        const edgeIdx = handle.userData.isBoundaryEdge;
+                        const bounds = boundaryRef.current;
+                        if (bounds && bounds.length >= 3 && stableCenterRef.current && groundPlaneRef.current) {
+                            // Get ground plane intersection for consistent coordinates with mousemove
+                            const groundIntersects = raycasterRef.current.intersectObject(groundPlaneRef.current);
+                            if (groundIntersects.length > 0) {
+                                const groundPoint = groundIntersects[0].point;
+                                // Use stable center (same as scene rendering)
+                                // Convert 3D to site coords: siteX = 3D.x + centerX, siteY = centerY - 3D.z
+                                const centerX = stableCenterRef.current.x;
+                                const centerY = stableCenterRef.current.y;
+                                const mouseX = groundPoint.x + centerX;
+                                const mouseY = centerY - groundPoint.z;  // FIXED: negate Z
+
+                                // Store initial state for edge dragging
+                                const p1 = bounds[edgeIdx];
+                                const p2 = bounds[(edgeIdx + 1) % bounds.length];
+                                isDraggingBoundaryEdgeRef.current = true;
+                                dragBoundaryEdgeIndexRef.current = edgeIdx;
+                                dragBoundaryEdgeStartRef.current = {
+                                    mouseX: mouseX,
+                                    mouseY: mouseY,  // FIXED: renamed from mouseZ
+                                    vertices: [{ x: p1.x, y: p1.y }, { x: p2.x, y: p2.y }]
+                                };
+                                controls.enabled = false;
+                                renderer.domElement.style.cursor = 'ew-resize';
+                            }
+                        }
+                        event.preventDefault();
+                        event.stopPropagation();
+                        return;
+                    }
+                }
+            }
+
+            // === Shift+Click: Start drawing mode ===
+            if (event.shiftKey && !isDrawing && onStartDrawingRef.current) {
+                onStartDrawingRef.current();
+                // Then add the first point
+                if (groundPlaneRef.current) {
+                    const groundIntersects = raycasterRef.current.intersectObject(groundPlaneRef.current);
+                    if (groundIntersects.length > 0) {
+                        const point = groundIntersects[0].point;
+                        const bounds = boundaryRef.current;
+                        if (bounds && bounds.length >= 3) {
+                            const xs = bounds.map(p => p.x);
+                            const ys = bounds.map(p => p.y);
+                            const centerX = (Math.min(...xs) + Math.max(...xs)) / 2;
+                            const centerY = (Math.min(...ys) + Math.max(...ys)) / 2;
+                            const siteX = point.x + centerX;
+                            const siteZ = centerY - point.z;
+                            // Small delay to let state update
+                            setTimeout(() => {
+                                if (onAddPolygonPointRef.current) {
+                                    onAddPolygonPointRef.current(siteX, siteZ);
+                                }
+                            }, 10);
+                        }
+                    }
+                }
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            }
+
+            // === Drawing Shape Mode: click to add points ===
+            if (isDrawing && groundPlaneRef.current) {
+                const groundIntersects = raycasterRef.current.intersectObject(groundPlaneRef.current);
+                if (groundIntersects.length > 0) {
+                    const point = groundIntersects[0].point;
+                    const bounds = boundaryRef.current;
+                    if (bounds && bounds.length >= 3) {
+                        const xs = bounds.map(p => p.x);
+                        const ys = bounds.map(p => p.y);
+                        const centerX = (Math.min(...xs) + Math.max(...xs)) / 2;
+                        const centerY = (Math.min(...ys) + Math.max(...ys)) / 2;
+                        const siteX = point.x + centerX;
+                        const siteZ = centerY - point.z;
+
+                        if (onAddPolygonPointRef.current) {
+                            onAddPolygonPointRef.current(siteX, siteZ);
+                        }
+                        event.preventDefault();
+                        event.stopPropagation();
+                        return;
+                    }
+                }
+            }
+
+            // === Check for drag handles first (height/edge handles) ===
+            if (handlesGroupRef.current) {
+                const intersects = raycasterRef.current.intersectObjects(handlesGroupRef.current.children, true);
+                if (intersects.length > 0) {
+                    const handle = intersects[0].object;
+                    if (handle.userData && handle.userData.dragType) {
+                        isDraggingRef.current = true;
+                        dragObjectRef.current = handle;
+                        dragStartYRef.current = intersects[0].point.y;
+                        dragStartXRef.current = intersects[0].point.x;
+                        dragStartValueRef.current = handle.userData.currentValue;
+                        dragDirectionRef.current = handle.userData.dragType;
+                        dragStartMouseRef.current = { x: event.clientX, y: event.clientY };
+                        controls.enabled = false;
+
+                        if (handle.userData.dragType === 'height') {
+                            renderer.domElement.style.cursor = 'ns-resize';
+                        } else {
+                            renderer.domElement.style.cursor = 'ew-resize';
+                        }
+
+                        event.preventDefault();
+                        event.stopPropagation();
+                        return;
+                    }
+                }
+            }
+
+            // === Check for vertex handles ===
+            if (vertexHandlesRef.current) {
+                const vertexIntersects = raycasterRef.current.intersectObjects(vertexHandlesRef.current.children, true);
+                if (vertexIntersects.length > 0) {
+                    const handle = vertexIntersects[0].object;
+                    if (handle.userData && handle.userData.isVertexHandle) {
+                        // Store stable center for consistent coordinate conversion during drag
+                        const bounds = boundaryRef.current;
+                        if (bounds && bounds.length >= 3) {
+                            const xs = bounds.map(p => p.x);
+                            const ys = bounds.map(p => p.y);
+                            stableCenterRef.current = {
+                                x: (Math.min(...xs) + Math.max(...xs)) / 2,
+                                y: (Math.min(...ys) + Math.max(...ys)) / 2
+                            };
+                        }
+                        isDraggingVertexRef.current = true;
+                        dragVertexDataRef.current = {
+                            buildingId: handle.userData.buildingId,
+                            vertexIndex: handle.userData.vertexIndex
+                        };
+                        controls.enabled = false;
+                        renderer.domElement.style.cursor = 'grabbing';
+                        event.preventDefault();
+                        event.stopPropagation();
+                        return;
+                    }
+                }
+            }
+
+            // === SMART CLICK: Check if clicking on a custom building ===
+            if (buildingsGroupRef.current) {
+                const buildingIntersects = raycasterRef.current.intersectObjects(buildingsGroupRef.current.children, true);
+                for (const hit of buildingIntersects) {
+                    let obj = hit.object;
+                    while (obj) {
+                        if (obj.userData && obj.userData.customBuildingId) {
+                            // Select the building
+                            if (onSelectBuildingRef.current) {
+                                onSelectBuildingRef.current(obj.userData.customBuildingId);
+                            }
+                            // Deselect template building
+                            if (onSelectTemplateBuildingRef.current) {
+                                onSelectTemplateBuildingRef.current(null);
+                            }
+                            // Store stable center for consistent coordinate conversion during drag
+                            const bounds = boundaryRef.current;
+                            if (bounds && bounds.length >= 3) {
+                                const xs = bounds.map(p => p.x);
+                                const ys = bounds.map(p => p.y);
+                                stableCenterRef.current = {
+                                    x: (Math.min(...xs) + Math.max(...xs)) / 2,
+                                    y: (Math.min(...ys) + Math.max(...ys)) / 2
+                                };
+                            }
+                            // Start drag-to-move
+                            isDraggingBuildingRef.current = true;
+                            dragBuildingIdRef.current = obj.userData.customBuildingId;
+                            controls.enabled = false;
+                            renderer.domElement.style.cursor = 'move';
+                            event.preventDefault();
+                            event.stopPropagation();
+                            return;
+                        }
+                        // Check for template building
+                        if (obj.userData && obj.userData.isTemplateBuilding && obj.userData.templateBuildingIndex !== undefined) {
+                            // Select the template building
+                            if (onSelectTemplateBuildingRef.current) {
+                                onSelectTemplateBuildingRef.current(obj.userData.templateBuildingIndex);
+                            }
+                            // Deselect custom building
+                            if (onSelectBuildingRef.current) {
+                                onSelectBuildingRef.current(null);
+                            }
+                            // Store stable center for consistent coordinate conversion during drag
+                            const bounds = boundaryRef.current;
+                            if (bounds && bounds.length >= 3) {
+                                const xs = bounds.map(p => p.x);
+                                const ys = bounds.map(p => p.y);
+                                stableCenterRef.current = {
+                                    x: (Math.min(...xs) + Math.max(...xs)) / 2,
+                                    y: (Math.min(...ys) + Math.max(...ys)) / 2
+                                };
+                            }
+                            // Start drag-to-move for template building
+                            isDraggingTemplateBuildingRef.current = true;
+                            dragTemplateBuildingIndexRef.current = obj.userData.templateBuildingIndex;
+                            dragTemplateBuildingStartRef.current = {
+                                x: obj.userData.baseX || 0,
+                                z: obj.userData.baseZ || 0
+                            };
+                            controls.enabled = false;
+                            renderer.domElement.style.cursor = 'move';
+                            event.preventDefault();
+                            event.stopPropagation();
+                            return;
+                        }
+                        obj = obj.parent;
+                    }
+                }
+
+                // === Check for vehicle clicks ===
+                // Look for objects with userData.isTrackedVehicle
+                for (const hit of buildingIntersects) {
+                    let obj = hit.object;
+                    while (obj) {
+                        if (obj.userData && obj.userData.isTrackedVehicle && obj.userData.vehicleId !== undefined) {
+                            // Select the vehicle
+                            if (onSelectVehicleRef.current) {
+                                onSelectVehicleRef.current(obj.userData.vehicleId);
+                            }
+                            // Show the vehicle panel
+                            if (onShowVehiclePanelRef.current) {
+                                onShowVehiclePanelRef.current();
+                            }
+                            // Deselect buildings
+                            if (onSelectBuildingRef.current) {
+                                onSelectBuildingRef.current(null);
+                            }
+                            if (onSelectTemplateBuildingRef.current) {
+                                onSelectTemplateBuildingRef.current(null);
+                            }
+                            event.preventDefault();
+                            event.stopPropagation();
+                            return;
+                        }
+                        obj = obj.parent;
+                    }
+                }
+            }
+
+            // === SMART CLICK: Click on empty ground = Store pending building placement ===
+            // Don't add immediately - wait for mouseup to check if it was a click or drag
+            if (groundPlaneRef.current) {
+                const groundIntersects = raycasterRef.current.intersectObject(groundPlaneRef.current);
+                if (groundIntersects.length > 0) {
+                    const point = groundIntersects[0].point;
+                    const bounds = boundaryRef.current;
+                    if (bounds && bounds.length >= 3) {
+                        const xs = bounds.map(p => p.x);
+                        const ys = bounds.map(p => p.y);
+                        const centerX = (Math.min(...xs) + Math.max(...xs)) / 2;
+                        const centerY = (Math.min(...ys) + Math.max(...ys)) / 2;
+                        let siteX = point.x + centerX;
+                        let siteZ = centerY - point.z;
+
+                        // Apply snapping
+                        const snapped = applySnap(siteX, siteZ);
+                        siteX = snapped.x;
+                        siteZ = snapped.z;
+
+                        // Store pending click - will be executed on mouseup if no drag occurred
+                        pendingClickRef.current = { siteX, siteZ, isPolygonPoint: false };
+                        // Don't preventDefault here - let OrbitControls handle potential drag
+                    }
+                }
+            }
+        };
+
+        const handleMouseMove = (event) => {
+            // Track if mouse has moved significantly (for click vs drag detection)
+            if (mouseDownPosRef.current) {
+                const dx = event.clientX - mouseDownPosRef.current.x;
+                const dy = event.clientY - mouseDownPosRef.current.y;
+                if (Math.sqrt(dx * dx + dy * dy) > CLICK_THRESHOLD) {
+                    mouseMovedRef.current = true;
+                    pendingClickRef.current = null; // Cancel pending building placement
+                }
+            }
+
+            getMousePosition(event);
+            raycasterRef.current.setFromCamera(mouseRef.current, camera);
+
+            // === Boundary vertex dragging ===
+            if (isDraggingBoundaryVertexRef.current && groundPlaneRef.current && stableCenterRef.current) {
+                const groundIntersects = raycasterRef.current.intersectObject(groundPlaneRef.current);
+                if (groundIntersects.length > 0) {
+                    const point = groundIntersects[0].point;
+
+                    // Use the stable center (same as scene rendering)
+                    const centerX = stableCenterRef.current.x;
+                    const centerY = stableCenterRef.current.y;
+
+                    // Convert 3D ground point to site coordinates
+                    // Ground shape uses rotateX(-PI/2): shape (x, y) -> 3D (x, 0, -y)
+                    // So to convert back: siteX = 3D.x + centerX, siteY = centerY - 3D.z
+                    let siteX = point.x + centerX;
+                    let siteY = centerY - point.z;
+
+                    // Apply ortho mode (Shift key) - constrain to major axis
+                    if (isShiftHeldRef.current && dragStartPosRef.current) {
+                        const deltaX = Math.abs(siteX - dragStartPosRef.current.x);
+                        const deltaY = Math.abs(siteY - dragStartPosRef.current.y);
+                        if (deltaX > deltaY) {
+                            // Constrain to X axis (horizontal)
+                            siteY = dragStartPosRef.current.y;
+                        } else {
+                            // Constrain to Y axis (vertical)
+                            siteX = dragStartPosRef.current.x;
+                        }
+                    }
+
+                    // Apply snapping
+                    const snapped = applySnap(siteX, siteY);
+                    siteX = snapped.x;
+                    siteY = snapped.z;
+
+                    // Update coordinate display overlay
+                    const rect = renderer.domElement.getBoundingClientRect();
+                    setCoordDisplay({
+                        x: Math.round(siteX),
+                        y: Math.round(siteY),
+                        screenX: event.clientX - rect.left + 15,
+                        screenY: event.clientY - rect.top - 30,
+                        ortho: isShiftHeldRef.current
+                    });
+
+                    if (onUpdateBoundaryVertexRef.current) {
+                        onUpdateBoundaryVertexRef.current(
+                            dragBoundaryVertexIndexRef.current,
+                            Math.round(siteX),
+                            Math.round(siteY)
+                        );
+                    }
+                }
+                return;
+            }
+
+            // === Boundary edge dragging (move both vertices) ===
+            if (isDraggingBoundaryEdgeRef.current && dragBoundaryEdgeStartRef.current && groundPlaneRef.current && stableCenterRef.current) {
+                const groundIntersects = raycasterRef.current.intersectObject(groundPlaneRef.current);
+                if (groundIntersects.length > 0) {
+                    const point = groundIntersects[0].point;
+                    const bounds = boundaryRef.current;
+                    if (bounds && bounds.length >= 3) {
+                        // Use the stable center (same as scene rendering)
+                        // Convert 3D to site coords: siteX = 3D.x + centerX, siteY = centerY - 3D.z
+                        const start = dragBoundaryEdgeStartRef.current;
+                        const centerX = stableCenterRef.current.x;
+                        const centerY = stableCenterRef.current.y;
+
+                        const currentMouseX = point.x + centerX;
+                        const currentMouseY = centerY - point.z;  // FIXED: negate Z
+
+                        // Calculate delta from drag start
+                        const deltaX = currentMouseX - start.mouseX;
+                        const deltaY = currentMouseY - start.mouseY;  // FIXED: renamed from deltaZ
+
+                        // Calculate new positions for both vertices
+                        let newX1 = start.vertices[0].x + deltaX;
+                        let newY1 = start.vertices[0].y + deltaY;  // FIXED: use deltaY
+                        let newX2 = start.vertices[1].x + deltaX;
+                        let newY2 = start.vertices[1].y + deltaY;  // FIXED: use deltaY
+
+                        // Apply snapping to the first vertex (edge moves as a unit)
+                        const snapped1 = applySnap(newX1, newY1);
+                        const snapDeltaX = snapped1.x - newX1;
+                        const snapDeltaY = snapped1.z - newY1;  // FIXED: renamed
+                        newX1 = snapped1.x;
+                        newY1 = snapped1.z;
+                        newX2 = newX2 + snapDeltaX;
+                        newY2 = newY2 + snapDeltaY;  // FIXED: use snapDeltaY
+
+                        // Update both vertices
+                        const idx1 = dragBoundaryEdgeIndexRef.current;
+                        const idx2 = (idx1 + 1) % bounds.length;
+
+                        if (onUpdateBoundaryVertexRef.current) {
+                            onUpdateBoundaryVertexRef.current(idx1, Math.round(newX1), Math.round(newY1));
+                            onUpdateBoundaryVertexRef.current(idx2, Math.round(newX2), Math.round(newY2));
+                        }
+                    }
+                }
+                return;
+            }
+
+            // === Vertex dragging ===
+            if (isDraggingVertexRef.current && dragVertexDataRef.current && groundPlaneRef.current && stableCenterRef.current) {
+                const groundIntersects = raycasterRef.current.intersectObject(groundPlaneRef.current);
+                if (groundIntersects.length > 0) {
+                    const point = groundIntersects[0].point;
+                    const centerX = stableCenterRef.current.x;
+                    const centerY = stableCenterRef.current.y;
+
+                    let siteX = point.x + centerX;
+                    let siteZ = centerY - point.z;
+
+                    // Apply snapping
+                    const snapped = applySnap(siteX, siteZ);
+                    siteX = snapped.x;
+                    siteZ = snapped.z;
+
+                    if (onUpdateVertexRef.current) {
+                        onUpdateVertexRef.current(
+                            dragVertexDataRef.current.buildingId,
+                            dragVertexDataRef.current.vertexIndex,
+                            siteX,
+                            siteZ
+                        );
+                    }
+                }
+                return;
+            }
+
+            // === Building dragging (move) ===
+            if (isDraggingBuildingRef.current && dragBuildingIdRef.current && groundPlaneRef.current && stableCenterRef.current) {
+                const groundIntersects = raycasterRef.current.intersectObject(groundPlaneRef.current);
+                if (groundIntersects.length > 0) {
+                    const point = groundIntersects[0].point;
+                    const centerX = stableCenterRef.current.x;
+                    const centerY = stableCenterRef.current.y;
+
+                    let siteX = point.x + centerX;
+                    let siteZ = centerY - point.z;
+
+                    // Apply snapping
+                    const snapped = applySnap(siteX, siteZ);
+                    siteX = snapped.x;
+                    siteZ = snapped.z;
+
+                    if (onMoveBuildingRef.current) {
+                        onMoveBuildingRef.current(dragBuildingIdRef.current, siteX, siteZ);
+                    }
+                }
+                return;
+            }
+
+            // === Template building dragging (move) ===
+            if (isDraggingTemplateBuildingRef.current && dragTemplateBuildingIndexRef.current !== null && groundPlaneRef.current && stableCenterRef.current) {
+                const groundIntersects = raycasterRef.current.intersectObject(groundPlaneRef.current);
+                if (groundIntersects.length > 0) {
+                    const point = groundIntersects[0].point;
+                    const centerX = stableCenterRef.current.x;
+                    const centerY = stableCenterRef.current.y;
+
+                    let siteX = point.x + centerX;
+                    let siteZ = centerY - point.z;
+
+                    // Apply snapping
+                    const snapped = applySnap(siteX, siteZ);
+                    siteX = snapped.x;
+                    siteZ = snapped.z;
+
+                    if (onMoveTemplateBuildingRef.current) {
+                        onMoveTemplateBuildingRef.current(dragTemplateBuildingIndexRef.current, siteX, siteZ);
+                    }
+                }
+                return;
+            }
+
+            if (isDraggingRef.current && dragObjectRef.current) {
+                const dragType = dragDirectionRef.current;
+                const sensitivity = dragObjectRef.current.userData.sensitivity || 50;
+                const minVal = dragObjectRef.current.userData.minValue || 1;
+                const maxVal = dragObjectRef.current.userData.maxValue || 500;
+
+                let newValue;
+
+                if (dragType === 'height') {
+                    // Vertical movement for height
+                    const deltaY = dragStartMouseRef.current.y - event.clientY;
+                    newValue = dragStartValueRef.current + (deltaY / sensitivity);
+                } else if (dragType === 'width' || dragType === 'depth') {
+                    // Horizontal movement for width/depth
+                    const deltaX = event.clientX - dragStartMouseRef.current.x;
+                    const direction = dragObjectRef.current.userData.direction || 1;
+                    newValue = dragStartValueRef.current + (deltaX * direction / sensitivity);
+                }
+
+                // Clamp value
+                const clampedValue = Math.round(Math.max(minVal, Math.min(maxVal, newValue)));
+
+                // Update via callback
+                if (dragObjectRef.current.userData.paramKey) {
+                    dragObjectRef.current.userData.onUpdate?.(
+                        dragObjectRef.current.userData.paramKey,
+                        clampedValue
+                    );
+                }
+            } else {
+                // Smart hover detection
+                const isDrawing = isDrawingShapeRef.current;
+
+                if (isDrawing) {
+                    renderer.domElement.style.cursor = 'crosshair';
+                } else if (isEditingBoundaryRef.current && boundaryHandlesRef.current) {
+                    // Check for boundary handles
+                    const boundaryIntersects = raycasterRef.current.intersectObjects(boundaryHandlesRef.current.children, true);
+                    if (boundaryIntersects.length > 0) {
+                        const handle = boundaryIntersects[0].object;
+                        if (handle.userData?.isBoundaryVertex !== undefined) {
+                            renderer.domElement.style.cursor = 'grab';
+                        } else if (handle.userData?.isBoundaryEdge !== undefined) {
+                            renderer.domElement.style.cursor = 'crosshair';
+                        } else {
+                            renderer.domElement.style.cursor = 'grab';
+                        }
+                    } else {
+                        renderer.domElement.style.cursor = 'default';
+                    }
+                } else if (handlesGroupRef.current) {
+                    // Check for resize handles
+                    const handleIntersects = raycasterRef.current.intersectObjects(handlesGroupRef.current.children, true);
+                    if (handleIntersects.length > 0 && handleIntersects[0].object.userData?.dragType) {
+                        const dt = handleIntersects[0].object.userData.dragType;
+                        if (dt === 'height') {
+                            renderer.domElement.style.cursor = 'ns-resize';
+                        } else {
+                            renderer.domElement.style.cursor = 'ew-resize';
+                        }
+                    } else if (vertexHandlesRef.current) {
+                        // Check for vertex handles
+                        const vertexIntersects = raycasterRef.current.intersectObjects(vertexHandlesRef.current.children, true);
+                        if (vertexIntersects.length > 0 && vertexIntersects[0].object.userData?.isVertexHandle) {
+                            renderer.domElement.style.cursor = 'grab';
+                        } else if (buildingsGroupRef.current) {
+                            // Check for hovering over buildings (custom or template)
+                            const buildingIntersects = raycasterRef.current.intersectObjects(buildingsGroupRef.current.children, true);
+                            let overMovableBuilding = false;
+                            for (const hit of buildingIntersects) {
+                                let obj = hit.object;
+                                while (obj) {
+                                    if (obj.userData && (obj.userData.customBuildingId || obj.userData.isTemplateBuilding)) {
+                                        overMovableBuilding = true;
+                                        break;
+                                    }
+                                    obj = obj.parent;
+                                }
+                                if (overMovableBuilding) break;
+                            }
+                            renderer.domElement.style.cursor = overMovableBuilding ? 'move' : 'crosshair';
+                        } else {
+                            renderer.domElement.style.cursor = 'crosshair';
+                        }
+                    } else {
+                        renderer.domElement.style.cursor = 'crosshair';
+                    }
+                } else {
+                    renderer.domElement.style.cursor = 'grab';
+                }
+            }
+        };
+
+        const handleMouseUp = () => {
+            // Execute pending building placement if it was a click (not a drag)
+            if (pendingClickRef.current && !mouseMovedRef.current) {
+                const { siteX, siteZ, isPolygonPoint } = pendingClickRef.current;
+                if (isPolygonPoint && onAddPolygonPointRef.current) {
+                    onAddPolygonPointRef.current(siteX, siteZ);
+                } else if (!isPolygonPoint && onAddBuildingRef.current) {
+                    onAddBuildingRef.current(siteX, siteZ);
+                }
+            }
+            pendingClickRef.current = null;
+            mouseMovedRef.current = false;
+
+            // Check if we need to update stable center after boundary drag
+            const wasDraggingBoundary = isDraggingBoundaryVertexRef.current || isDraggingBoundaryEdgeRef.current;
+
+            if (isDraggingBoundaryVertexRef.current) {
+                isDraggingBoundaryVertexRef.current = false;
+                dragBoundaryVertexIndexRef.current = null;
+                dragStartPosRef.current = null;  // Clear ortho reference
+                setCoordDisplay(null);  // Hide coordinate display
+                controls.enabled = true;
+                renderer.domElement.style.cursor = 'grab';
+            }
+            if (isDraggingBoundaryEdgeRef.current) {
+                isDraggingBoundaryEdgeRef.current = false;
+                dragBoundaryEdgeIndexRef.current = null;
+                dragBoundaryEdgeStartRef.current = null;
+                setCoordDisplay(null);  // Hide coordinate display
+                controls.enabled = true;
+                renderer.domElement.style.cursor = 'grab';
+            }
+
+            // Update stable center after boundary drag ends
+            if (wasDraggingBoundary) {
+                const bounds = boundaryRef.current;
+                if (bounds && bounds.length >= 3) {
+                    const xs = bounds.map(p => p.x);
+                    const ys = bounds.map(p => p.y);
+                    const centerX = (Math.min(...xs) + Math.max(...xs)) / 2;
+                    const centerY = (Math.min(...ys) + Math.max(...ys)) / 2;
+                    stableCenterRef.current = { x: centerX, y: centerY };
+                }
+            }
+
+            if (isDraggingVertexRef.current) {
+                isDraggingVertexRef.current = false;
+                dragVertexDataRef.current = null;
+                controls.enabled = true;
+                renderer.domElement.style.cursor = 'grab';
+            }
+            if (isDraggingBuildingRef.current) {
+                isDraggingBuildingRef.current = false;
+                dragBuildingIdRef.current = null;
+                controls.enabled = true;
+                renderer.domElement.style.cursor = 'grab';
+            }
+            if (isDraggingTemplateBuildingRef.current) {
+                isDraggingTemplateBuildingRef.current = false;
+                dragTemplateBuildingIndexRef.current = null;
+                controls.enabled = true;
+                renderer.domElement.style.cursor = 'grab';
+            }
+            if (isDraggingRef.current) {
+                isDraggingRef.current = false;
+                dragObjectRef.current = null;
+                controls.enabled = true;
+                renderer.domElement.style.cursor = 'grab';
+            }
+        };
+
+        // Double-click handler for finishing polygon OR opening precise vertex input
+        const handleDoubleClick = (event) => {
+            const isDrawing = isDrawingShapeRef.current;
+            const isEditingBound = isEditingBoundaryRef.current;
+
+            // Check for double-click on boundary vertex (opens precision dialog)
+            if (isEditingBound && boundaryHandlesRef.current) {
+                getMousePosition(event);
+                raycasterRef.current.setFromCamera(mouseRef.current, camera);
+                const boundaryIntersects = raycasterRef.current.intersectObjects(boundaryHandlesRef.current.children, true);
+                if (boundaryIntersects.length > 0) {
+                    const handle = boundaryIntersects[0].object;
+                    if (handle.userData && handle.userData.isBoundaryVertex !== undefined) {
+                        const vertexIdx = handle.userData.isBoundaryVertex;
+                        const bounds = boundaryRef.current;
+                        if (bounds && bounds[vertexIdx]) {
+                            setEditingVertex({
+                                index: vertexIdx,
+                                x: bounds[vertexIdx].x,
+                                y: bounds[vertexIdx].y
+                            });
+                            event.preventDefault();
+                            event.stopPropagation();
+                            return;
+                        }
+                    }
+                }
+            }
+
+            if (isDrawing && onFinishPolygonRef.current) {
+                onFinishPolygonRef.current();
+                event.preventDefault();
+                event.stopPropagation();
+            }
+        };
+
+        renderer.domElement.addEventListener('mousedown', handleMouseDown);
+        renderer.domElement.addEventListener('mousemove', handleMouseMove);
+        renderer.domElement.addEventListener('mouseup', handleMouseUp);
+        renderer.domElement.addEventListener('mouseleave', handleMouseUp);
+        renderer.domElement.addEventListener('dblclick', handleDoubleClick);
+
+        // Keyboard handlers for precision controls (Shift = ortho mode) and vehicle controls
+        const handleKeyDown = (event) => {
+            if (event.key === 'Shift') {
+                isShiftHeldRef.current = true;
+            }
+
+            // Vehicle controls - only if vehicle panel is open and we have a selected vehicle
+            if (showVehiclePanelRef.current && selectedVehicleRef.current) {
+                const speed = vehicleSpeedRef.current || 2;
+
+                switch (event.key) {
+                    case 'ArrowUp':
+                    case 'w':
+                    case 'W':
+                        event.preventDefault();
+                        if (onMoveVehicleRef.current) {
+                            onMoveVehicleRef.current(selectedVehicleRef.current, speed);
+                        }
+                        break;
+                    case 'ArrowDown':
+                    case 's':
+                    case 'S':
+                        event.preventDefault();
+                        if (onMoveVehicleRef.current) {
+                            onMoveVehicleRef.current(selectedVehicleRef.current, -speed);
+                        }
+                        break;
+                    case 'ArrowLeft':
+                    case 'a':
+                    case 'A':
+                        event.preventDefault();
+                        if (onSteerVehicleRef.current) {
+                            onSteerVehicleRef.current(selectedVehicleRef.current, -25, speed * 0.5);
+                        }
+                        break;
+                    case 'ArrowRight':
+                    case 'd':
+                    case 'D':
+                        event.preventDefault();
+                        if (onSteerVehicleRef.current) {
+                            onSteerVehicleRef.current(selectedVehicleRef.current, 25, speed * 0.5);
+                        }
+                        break;
+                    case 'q':
+                    case 'Q':
+                        event.preventDefault();
+                        if (onRotateVehicleRef.current) {
+                            onRotateVehicleRef.current(selectedVehicleRef.current, -5);
+                        }
+                        break;
+                    case 'e':
+                    case 'E':
+                        event.preventDefault();
+                        if (onRotateVehicleRef.current) {
+                            onRotateVehicleRef.current(selectedVehicleRef.current, 5);
+                        }
+                        break;
+                    case 'c':
+                    case 'C':
+                        event.preventDefault();
+                        if (onClearAllTrailsRef.current) {
+                            onClearAllTrailsRef.current();
+                        }
+                        break;
+                    default:
+                        break;
+                }
+            }
+        };
+        const handleKeyUp = (event) => {
+            if (event.key === 'Shift') {
+                isShiftHeldRef.current = false;
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('keyup', handleKeyUp);
+
+        // Cleanup
+        return () => {
+            window.removeEventListener('resize', handleResize);
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('keyup', handleKeyUp);
+            renderer.domElement.removeEventListener('mousedown', handleMouseDown);
+            renderer.domElement.removeEventListener('mousemove', handleMouseMove);
+            renderer.domElement.removeEventListener('mouseup', handleMouseUp);
+            renderer.domElement.removeEventListener('mouseleave', handleMouseUp);
+            renderer.domElement.removeEventListener('dblclick', handleDoubleClick);
+            resizeObserver.disconnect();
+            cancelAnimationFrame(animationRef.current);
+            controls.dispose();
+            renderer.dispose();
+            container.removeChild(renderer.domElement);
+        };
+    }, []);
+
+    // Update buildings when parameters change
+    useEffect(() => {
+        if (!buildingsGroupRef.current || !sceneRef.current) return;
+        if (!boundary || boundary.length < 3) return;
+
+        const buildingsGroup = buildingsGroupRef.current;
+        const handlesGroup = handlesGroupRef.current;
+
+        // Clear existing buildings
+        while (buildingsGroup.children.length > 0) {
+            const child = buildingsGroup.children[0];
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) child.material.dispose();
+            buildingsGroup.remove(child);
+        }
+
+        // Clear existing handles
+        if (handlesGroup) {
+            while (handlesGroup.children.length > 0) {
+                const child = handlesGroup.children[0];
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) child.material.dispose();
+                handlesGroup.remove(child);
+            }
+        }
+
+        // Clear existing vertex handles
+        const vertexHandlesGroup = vertexHandlesRef.current;
+        if (vertexHandlesGroup) {
+            while (vertexHandlesGroup.children.length > 0) {
+                const child = vertexHandlesGroup.children[0];
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) child.material.dispose();
+                vertexHandlesGroup.remove(child);
+            }
+        }
+
+        // Clear existing boundary handles
+        const boundaryHandlesGroup = boundaryHandlesRef.current;
+        if (boundaryHandlesGroup) {
+            while (boundaryHandlesGroup.children.length > 0) {
+                const child = boundaryHandlesGroup.children[0];
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) child.material.dispose();
+                boundaryHandlesGroup.remove(child);
+            }
+        }
+
+        // Calculate site bounds
+        const minX = Math.min(...boundary.map(p => p.x));
+        const maxX = Math.max(...boundary.map(p => p.x));
+        const minY = Math.min(...boundary.map(p => p.y));
+        const maxY = Math.max(...boundary.map(p => p.y));
+        const siteW = maxX - minX;
+        const siteD = maxY - minY;
+
+        // Use stable center if we're dragging, otherwise calculate new center
+        const isDragging = isDraggingBoundaryVertexRef.current || isDraggingBoundaryEdgeRef.current ||
+            isDraggingVertexRef.current || isDraggingBuildingRef.current || isDraggingTemplateBuildingRef.current;
+        let centerX, centerY;
+
+        if (isDragging && stableCenterRef.current) {
+            // During drag, use the stable center to prevent shifting
+            centerX = stableCenterRef.current.x;
+            centerY = stableCenterRef.current.y;
+        } else {
+            // Not dragging, calculate and store new center
+            centerX = (minX + maxX) / 2;
+            centerY = (minY + maxY) / 2;
+            stableCenterRef.current = { x: centerX, y: centerY };
+        }
+
+        // Buildable area
+        const setbackX = setbacks.side;
+        const setbackY = setbacks.front;
+        const buildableW = siteW - setbacks.side * 2;
+        const buildableD = siteD - setbacks.front - setbacks.rear;
+
+        // Create ground plane from boundary - INVISIBLE for click detection only
+        const groundShape = new THREE.Shape();
+        groundShape.moveTo(boundary[0].x - centerX, boundary[0].y - centerY);
+        for (let i = 1; i < boundary.length; i++) {
+            groundShape.lineTo(boundary[i].x - centerX, boundary[i].y - centerY);
+        }
+        groundShape.closePath();
+
+        const groundGeometry = new THREE.ShapeGeometry(groundShape);
+        groundGeometry.rotateX(-Math.PI / 2);
+        const groundMaterial = new THREE.MeshStandardMaterial({
+            color: 0x22c55e,
+            transparent: true,
+            opacity: 0, // Invisible - just for raycasting
+            side: THREE.DoubleSide
+        });
+        const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
+        groundMesh.receiveShadow = true;
+        groundMesh.position.y = 0.1;
+        buildingsGroup.add(groundMesh);
+
+        // Store ground mesh ref for click detection
+        groundPlaneRef.current = groundMesh;
+
+        // Create GREEN DASHED LINE for site boundary (simple 2D line)
+        const boundaryPoints = [];
+        for (let i = 0; i < boundary.length; i++) {
+            boundaryPoints.push(new THREE.Vector3(
+                boundary[i].x - centerX,
+                0.15, // Slightly above ground
+                centerY - boundary[i].y
+            ));
+        }
+        // Close the loop
+        boundaryPoints.push(new THREE.Vector3(
+            boundary[0].x - centerX,
+            0.15,
+            centerY - boundary[0].y
+        ));
+
+        const boundaryLineGeo = new THREE.BufferGeometry().setFromPoints(boundaryPoints);
+        const boundaryLineMat = new THREE.LineDashedMaterial({
+            color: 0x16a34a, // Darker green for visibility
+            dashSize: 8,
+            gapSize: 4,
+            linewidth: 2
+        });
+        const boundaryLine = new THREE.Line(boundaryLineGeo, boundaryLineMat);
+        boundaryLine.computeLineDistances(); // Required for dashed lines
+        buildingsGroup.add(boundaryLine);
+
+        // Create BLUE DASHED LINE for buildable area (after setbacks) - skip for parking
+        if (buildingType !== 'parking') {
+            const buildableOX = minX + setbacks.side;
+            const buildableOZ = minY + setbacks.front;
+            const buildablePoints = [
+                new THREE.Vector3(buildableOX - centerX, 0.2, centerY - buildableOZ),
+                new THREE.Vector3(buildableOX + buildableW - centerX, 0.2, centerY - buildableOZ),
+                new THREE.Vector3(buildableOX + buildableW - centerX, 0.2, centerY - (buildableOZ + buildableD)),
+                new THREE.Vector3(buildableOX - centerX, 0.2, centerY - (buildableOZ + buildableD)),
+                new THREE.Vector3(buildableOX - centerX, 0.2, centerY - buildableOZ) // Close loop
+            ];
+
+            const buildableLineGeo = new THREE.BufferGeometry().setFromPoints(buildablePoints);
+            const buildableLineMat = new THREE.LineDashedMaterial({
+                color: 0x3b82f6, // Blue
+                dashSize: 6,
+                gapSize: 3,
+                linewidth: 2
+            });
+            const buildableLine = new THREE.Line(buildableLineGeo, buildableLineMat);
+            buildableLine.computeLineDistances(); // Required for dashed lines
+            buildingsGroup.add(buildableLine);
+        }
+
+        // Create boundary edit handles (vertices and edge midpoints)
+        if (isEditingBoundary && boundaryHandlesRef.current) {
+            const boundaryHandlesGroup = boundaryHandlesRef.current;
+
+            // Vertex handles (yellow spheres)
+            // Note: Ground shape uses rotateX(-PI/2) which maps shape (x, y) to 3D (x, 0, -y)
+            // So handle Z should be -(pt.y - centerY) = centerY - pt.y
+            for (let i = 0; i < boundary.length; i++) {
+                const pt = boundary[i];
+                const handleGeo = new THREE.SphereGeometry(4, 16, 16);
+                const handleMat = new THREE.MeshStandardMaterial({
+                    color: 0xffd700, // Gold
+                    roughness: 0.3,
+                    metalness: 0.5,
+                    emissive: 0xaa8800,
+                    emissiveIntensity: 0.3
+                });
+                const handle = new THREE.Mesh(handleGeo, handleMat);
+                const handleX = pt.x - centerX;
+                const handleZ = centerY - pt.y;  // FIXED: negate Y to match ground rotation
+                handle.position.set(handleX, 2, handleZ);
+                handle.castShadow = true;
+                handle.userData = { isBoundaryVertex: i };
+                boundaryHandlesGroup.add(handle);
+            }
+
+            // Edge midpoint handles (orange spheres - drag to move edge)
+            for (let i = 0; i < boundary.length; i++) {
+                const pt1 = boundary[i];
+                const pt2 = boundary[(i + 1) % boundary.length];
+                const midX = (pt1.x + pt2.x) / 2;
+                const midY = (pt1.y + pt2.y) / 2;
+
+                const handleGeo = new THREE.SphereGeometry(3, 12, 12);
+                const handleMat = new THREE.MeshStandardMaterial({
+                    color: 0xf97316, // Orange (matches 2D)
+                    roughness: 0.3,
+                    metalness: 0.5,
+                    emissive: 0xcc5500,
+                    emissiveIntensity: 0.3,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                const handle = new THREE.Mesh(handleGeo, handleMat);
+                // FIXED: negate Y to match ground rotation
+                handle.position.set(midX - centerX, 1.5, centerY - midY);
+                handle.castShadow = true;
+                handle.userData = { isBoundaryEdge: i };
+                boundaryHandlesGroup.add(handle);
+            }
+        }
+
+        // Create invisible large ground plane for reliable click detection
+        const clickPlaneGeometry = new THREE.PlaneGeometry(siteW * 3, siteD * 3);
+        clickPlaneGeometry.rotateX(-Math.PI / 2);
+        const clickPlaneMaterial = new THREE.MeshBasicMaterial({
+            visible: false,
+            side: THREE.DoubleSide
+        });
+        const clickPlane = new THREE.Mesh(clickPlaneGeometry, clickPlaneMaterial);
+        clickPlane.position.y = 0;
+        clickPlane.userData.isClickPlane = true;
+        buildingsGroup.add(clickPlane);
+        groundPlaneRef.current = clickPlane;
+
+        // Buildable area outline - use ACTUAL setbacks (not averaged) for accurate representation
+        // This ensures the visual buildable area matches where buildings are actually placed
+
+        // Create buildable area as simple rectangle matching ox, oz, buildableW, buildableD
+        // This is where buildings will actually be positioned
+        // Skip for parking type - the parking layout has its own surfaces
+        if (buildableW > 0 && buildableD > 0 && buildingType !== 'parking') {
+            const buildableGeo = new THREE.PlaneGeometry(buildableW, buildableD);
+            buildableGeo.rotateX(-Math.PI / 2);
+            const buildableMaterial = new THREE.MeshBasicMaterial({
+                color: 0x3b82f6,
+                transparent: true,
+                opacity: 0.15,
+                side: THREE.DoubleSide,
+                depthWrite: false, // Prevent z-fighting, render behind other elements
+                polygonOffset: true,
+                polygonOffsetFactor: 5, // Push back (behind other surfaces)
+                polygonOffsetUnits: 5
+            });
+            const buildableMesh = new THREE.Mesh(buildableGeo, buildableMaterial);
+            // Position using the same formula as buildings:
+            // ox = minX + setbacks.side, oz = minY + setbacks.front
+            const bx = minX + setbacks.side;
+            const bz = minY + setbacks.front;
+            buildableMesh.position.set(
+                bx + buildableW / 2 - centerX,
+                0.002, // Just above grid (-0.01) but below parking elements
+                centerY - (bz + buildableD / 2)
+            );
+            buildableMesh.renderOrder = -1; // Render first (behind everything)
+            buildingsGroup.add(buildableMesh);
+        }
+
+        // Get massing parameters
+        const floorH = massingConfig.floorHeight || 10;
+        const buildColor = typeColors[buildingType] || 0x8b5cf6;
+        const podiumColor = 0x6b7280;
+        const parkingColor = 0xfbbf24;
+
+        // Helper to create a height handle (3D cone arrow pointing straight UP)
+        // buildingIndex: if provided, uses individual building param change; if null, uses shared param change
+        const createDragHandle = (x, y, z, paramKey, currentValue, minValue, maxValue, sensitivity = 50, buildingIndex = null) => {
+            if (!handlesGroup) return null;
+            // Need either shared or individual callback
+            if (buildingIndex === null && !onParamChange) return null;
+            if (buildingIndex !== null && !onIndividualBuildingParamChange) return null;
+
+            const handleGroup = new THREE.Group();
+            handleGroup.position.set(x, y + 5, z); // Above building
+
+            // 3D cone pointing UP (perpendicular to ground plane)
+            const coneGeo = new THREE.ConeGeometry(3, 8, 8);
+            const coneMat = new THREE.MeshStandardMaterial({
+                color: buildingIndex !== null ? 0x00ff88 : 0x00aaff, // Green for individual, blue for shared
+                roughness: 0.3,
+                metalness: 0.5,
+                emissive: buildingIndex !== null ? 0x004422 : 0x004488,
+                emissiveIntensity: 0.3
+            });
+            const cone = new THREE.Mesh(coneGeo, coneMat);
+            cone.position.y = 4; // Lift so tip is at top
+            cone.castShadow = true;
+            handleGroup.add(cone);
+
+            // Store drag metadata on the group
+            handleGroup.userData = {
+                dragType: 'height',
+                paramKey: paramKey,
+                currentValue: currentValue,
+                minValue: minValue,
+                maxValue: maxValue,
+                sensitivity: sensitivity,
+                buildingIndex: buildingIndex, // null for shared, number for individual
+                onUpdate: (key, value) => {
+                    if (buildingIndex !== null && onIndividualBuildingParamChangeRef.current) {
+                        onIndividualBuildingParamChangeRef.current(buildingIndex, key, value);
+                    } else if (onParamChange) {
+                        onParamChange(key, value);
+                    }
+                }
+            };
+
+            cone.userData = handleGroup.userData;
+
+            handlesGroup.add(handleGroup);
+            return handleGroup;
+        };
+
+        // Helper to create an edge handle (3D cone arrow pointing perpendicular to edge)
+        const createEdgeHandle = (x, y, z, dragType, paramKey, currentValue, minValue, maxValue, sensitivity = 2, direction = 1, rotation = 0) => {
+            if (!handlesGroup || !onParamChange) return null;
+
+            const handleGroup = new THREE.Group();
+            handleGroup.position.set(x, y, z);
+
+            // 3D cone pointing outward (perpendicular to building edge)
+            const coneGeo = new THREE.ConeGeometry(2.5, 7, 8);
+            const coneMat = new THREE.MeshStandardMaterial({
+                color: 0xffaa00,
+                roughness: 0.3,
+                metalness: 0.5,
+                emissive: 0x885500,
+                emissiveIntensity: 0.3
+            });
+            const cone = new THREE.Mesh(coneGeo, coneMat);
+
+            // Rotate cone to point horizontally outward based on edge direction
+            // Cone default points up (+Y), we rotate to point in XZ plane
+            cone.rotation.z = -Math.PI / 2; // Now points +X
+            cone.rotation.y = rotation; // Rotate around Y to face correct direction
+            cone.position.x = 4 * Math.cos(rotation); // Offset tip outward
+            cone.position.z = -4 * Math.sin(rotation);
+            cone.castShadow = true;
+            handleGroup.add(cone);
+
+            // Store drag metadata
+            handleGroup.userData = {
+                dragType: dragType, // 'width' or 'depth'
+                paramKey: paramKey,
+                currentValue: currentValue,
+                minValue: minValue,
+                maxValue: maxValue,
+                sensitivity: sensitivity,
+                direction: direction, // 1 or -1 for which way positive drag goes
+                onUpdate: (key, value) => {
+                    onParamChange(key, value);
+                }
+            };
+
+            cone.userData = handleGroup.userData;
+
+            handlesGroup.add(handleGroup);
+            return handleGroup;
+        };
+
+        // Helper to create a building box with optional drag handle and floor lines
+        // buildingIndex: if provided, creates individual handle for that specific building
+        // isTemplateBuilding: if true, marks this as a movable template building
+        // startLevelOffset: additional Y offset based on starting level (in feet)
+        const createBox = (x, z, w, d, h, color, offsetY = 0, handleConfig = null, edgeHandles = null, floorCount = null, buildingIndex = null, isTemplateBuilding = false, startLevelOffset = 0) => {
+            const buildingGroup = new THREE.Group();
+
+            // Calculate total Y offset including start level
+            const totalOffsetY = offsetY + startLevelOffset;
+
+            // Apply template building position offset if exists
+            let finalX = x;
+            let finalZ = z;
+            if (isTemplateBuilding && buildingIndex !== null && templateBuildingPositions[buildingIndex]) {
+                finalX = templateBuildingPositions[buildingIndex].x;
+                finalZ = templateBuildingPositions[buildingIndex].z;
+            }
+
+            const geometry = new THREE.BoxGeometry(w, h, d);
+
+            // Check if this template building is selected
+            const isSelected = isTemplateBuilding && buildingIndex !== null && selectedTemplateBuilding === buildingIndex;
+
+            const material = new THREE.MeshStandardMaterial({
+                color: color,
+                roughness: 0.7,
+                metalness: 0.1,
+                emissive: isSelected ? 0xff6600 : 0x000000,
+                emissiveIntensity: isSelected ? 0.4 : 0
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            const posX = finalX - centerX + w / 2;
+            const posY = h / 2 + totalOffsetY;
+            // Match ground plane rotation: site Y -> 3D -Z
+            const posZ = centerY - finalZ - d / 2;
+            mesh.position.set(posX, posY, posZ);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+
+            // Add edge outline for better visibility and control
+            const edgesGeometry = new THREE.EdgesGeometry(geometry);
+            const edgesMaterial = new THREE.LineBasicMaterial({
+                color: isSelected ? 0xff6600 : 0x000000,
+                linewidth: 2,
+                transparent: true,
+                opacity: isSelected ? 1.0 : 0.4
+            });
+            const edges = new THREE.LineSegments(edgesGeometry, edgesMaterial);
+            edges.position.copy(mesh.position);
+            buildingGroup.add(edges);
+
+            // Mark as template building for selection/movement
+            if (isTemplateBuilding && buildingIndex !== null) {
+                mesh.userData.isTemplateBuilding = true;
+                mesh.userData.templateBuildingIndex = buildingIndex;
+                mesh.userData.baseX = finalX;
+                mesh.userData.baseZ = finalZ;
+                buildingGroup.userData.isTemplateBuilding = true;
+                buildingGroup.userData.templateBuildingIndex = buildingIndex;
+            }
+
+            buildingGroup.add(mesh);
+
+            // Add floor level lines if floorCount provided
+            if (floorCount && floorCount > 1) {
+                const floorHeight = h / floorCount;
+                const lineColor = 0xffffff; // White floor lines
+                const edgeMaterial = new THREE.LineBasicMaterial({
+                    color: lineColor,
+                    linewidth: 2,
+                    transparent: true,
+                    opacity: 0.6
+                });
+
+                // Create horizontal lines at each floor level on all 4 sides
+                for (let floor = 1; floor < floorCount; floor++) {
+                    const floorY = totalOffsetY + floor * floorHeight;
+
+                    // Front edge (positive Z)
+                    const frontPoints = [
+                        new THREE.Vector3(posX - w / 2, floorY, posZ + d / 2 + 0.1),
+                        new THREE.Vector3(posX + w / 2, floorY, posZ + d / 2 + 0.1)
+                    ];
+                    const frontGeom = new THREE.BufferGeometry().setFromPoints(frontPoints);
+                    buildingGroup.add(new THREE.Line(frontGeom, edgeMaterial));
+
+                    // Back edge (negative Z)
+                    const backPoints = [
+                        new THREE.Vector3(posX - w / 2, floorY, posZ - d / 2 - 0.1),
+                        new THREE.Vector3(posX + w / 2, floorY, posZ - d / 2 - 0.1)
+                    ];
+                    const backGeom = new THREE.BufferGeometry().setFromPoints(backPoints);
+                    buildingGroup.add(new THREE.Line(backGeom, edgeMaterial));
+
+                    // Left edge (negative X)
+                    const leftPoints = [
+                        new THREE.Vector3(posX - w / 2 - 0.1, floorY, posZ - d / 2),
+                        new THREE.Vector3(posX - w / 2 - 0.1, floorY, posZ + d / 2)
+                    ];
+                    const leftGeom = new THREE.BufferGeometry().setFromPoints(leftPoints);
+                    buildingGroup.add(new THREE.Line(leftGeom, edgeMaterial));
+
+                    // Right edge (positive X)
+                    const rightPoints = [
+                        new THREE.Vector3(posX + w / 2 + 0.1, floorY, posZ - d / 2),
+                        new THREE.Vector3(posX + w / 2 + 0.1, floorY, posZ + d / 2)
+                    ];
+                    const rightGeom = new THREE.BufferGeometry().setFromPoints(rightPoints);
+                    buildingGroup.add(new THREE.Line(rightGeom, edgeMaterial));
+                }
+
+                // Add floor count label on top
+                // (Text rendering in Three.js requires sprite or CSS2D - skip for now)
+            }
+
+            // Add height drag handle if config provided
+            if (handleConfig && handlesGroup) {
+                // Use individual callback if buildingIndex provided, else shared callback
+                const useIndividual = buildingIndex !== null && onIndividualBuildingParamChange;
+                const useShared = buildingIndex === null && onParamChange;
+                if (useIndividual || useShared) {
+                    createDragHandle(
+                        posX,
+                        h + totalOffsetY + 8, // Position above the building
+                        posZ,
+                        handleConfig.paramKey,
+                        handleConfig.currentValue,
+                        handleConfig.minValue,
+                        handleConfig.maxValue,
+                        handleConfig.sensitivity,
+                        buildingIndex // Pass building index for individual control
+                    );
+                }
+            }
+
+            // Add edge handles for width/depth if config provided
+            if (edgeHandles && handlesGroup && onParamChange) {
+                const handleY = posY; // Center height of building
+
+                // Width handle on right edge (positive X direction)
+                if (edgeHandles.width) {
+                    createEdgeHandle(
+                        posX + w / 2 + 10, // Right edge
+                        handleY,
+                        posZ,
+                        'width',
+                        edgeHandles.width.paramKey,
+                        edgeHandles.width.currentValue,
+                        edgeHandles.width.minValue || 20,
+                        edgeHandles.width.maxValue || 500,
+                        edgeHandles.width.sensitivity || 2,
+                        1, // direction
+                        0  // rotation
+                    );
+                }
+
+                // Depth handle on front edge (positive Z direction)
+                if (edgeHandles.depth) {
+                    createEdgeHandle(
+                        posX,
+                        handleY,
+                        posZ + d / 2 + 10, // Front edge
+                        'depth',
+                        edgeHandles.depth.paramKey,
+                        edgeHandles.depth.currentValue,
+                        edgeHandles.depth.minValue || 20,
+                        edgeHandles.depth.maxValue || 500,
+                        edgeHandles.depth.sensitivity || 2,
+                        1, // direction
+                        Math.PI / 2 // rotated 90 degrees
+                    );
+                }
+            }
+
+            return buildingGroup;
+        };
+
+        // Helper to get start level offset for a building
+        const getStartLevelOffset = (buildingIndex, defaultFloorHeight = 10) => {
+            const startLevel = individualBuildingParams[buildingIndex]?.startLevel ?? 0;
+            return startLevel * defaultFloorHeight;
+        };
+
+        // Offset for buildable area
+        const ox = minX + setbacks.side;
+        const oz = minY + setbacks.front;
+
+        // Generate massing based on type
+        if (massingType === 'podium') {
+            const basePodiumFloors = massingConfig.podiumFloors || 2;
+            const baseResidentialFloors = massingConfig.residentialFloors || 4;
+            const towerWidthPct = massingConfig.towerWidthPct || 70;
+            const towerDepthPct = massingConfig.towerDepthPct || 70;
+            const towerW = buildableW * (towerWidthPct / 100);
+            const towerD = buildableD * (towerDepthPct / 100);
+            const towerOffX = (buildableW - towerW) / 2;
+            const towerOffZ = (buildableD - towerD) / 2;
+
+            // Podium (template building 0 - uses individual floors and startLevel)
+            const podiumFloors = individualBuildingParams[0]?.floors ?? basePodiumFloors;
+            const podiumH = podiumFloors * floorH;
+            const podiumStartOffset = getStartLevelOffset(0, floorH);
+            buildingsGroup.add(createBox(ox, oz, buildableW * lotCoverage, buildableD, podiumH, podiumColor, 0, {
+                paramKey: 'floors',
+                currentValue: podiumFloors,
+                minValue: 1,
+                maxValue: 6,
+                sensitivity: 30
+            }, null, podiumFloors, 0, true, podiumStartOffset));
+            // Tower (template building 1 - uses individual floors and startLevel)
+            const residentialFloors = individualBuildingParams[1]?.floors ?? baseResidentialFloors;
+            const towerH = residentialFloors * floorH;
+            const towerStartOffset = getStartLevelOffset(1, floorH);
+            buildingsGroup.add(createBox(ox + towerOffX, oz + towerOffZ, towerW * lotCoverage, towerD, towerH, buildColor, podiumH, {
+                paramKey: 'floors',
+                currentValue: residentialFloors,
+                minValue: 2,
+                maxValue: 20,
+                sensitivity: 40
+            }, {
+                width: {
+                    paramKey: 'towerWidthPct',
+                    currentValue: towerWidthPct,
+                    minValue: 30,
+                    maxValue: 95,
+                    sensitivity: 3
+                },
+                depth: {
+                    paramKey: 'towerDepthPct',
+                    currentValue: towerDepthPct,
+                    minValue: 30,
+                    maxValue: 95,
+                    sensitivity: 3
+                }
+            }, residentialFloors, 1, true, towerStartOffset));  // Template building 1
+
+        } else if (massingType === 'wrap') {
+            const baseWrapFloors = massingConfig.floors || 5;
+            const baseGarageFloors = massingConfig.garageFloors || 4;
+            const garageFloorH = massingConfig.garageHeight || 11;
+            const coreW = buildableW * 0.4;
+            const coreD = buildableD * 0.5;
+            const coreX = ox + (buildableW - coreW) / 2;
+            const coreZ = oz + (buildableD - coreD) / 2;
+            const wrapThickness = buildableW * 0.2;
+
+            // Parking core (template building 3 - individually controllable)
+            const garageFloors = individualBuildingParams[3]?.floors ?? baseGarageFloors;
+            const garageH = garageFloors * garageFloorH;
+            const garageStartOffset = getStartLevelOffset(3, garageFloorH);
+            buildingsGroup.add(createBox(coreX, coreZ, coreW, coreD, garageH, podiumColor, 0, {
+                paramKey: 'floors',
+                currentValue: garageFloors,
+                minValue: 2,
+                maxValue: 8,
+                sensitivity: 25
+            }, null, garageFloors, 3, true, garageStartOffset));
+
+            // Wrap - left (template building 0)
+            const wrapLeftFloors = individualBuildingParams[0]?.floors ?? baseWrapFloors;
+            const wrapLeftH = wrapLeftFloors * floorH;
+            const wrapLeftStartOffset = getStartLevelOffset(0, floorH);
+            buildingsGroup.add(createBox(ox, oz, wrapThickness, buildableD, wrapLeftH, buildColor, 0, {
+                paramKey: 'floors',
+                currentValue: wrapLeftFloors,
+                minValue: 3,
+                maxValue: 8,
+                sensitivity: 30
+            }, null, wrapLeftFloors, 0, true, wrapLeftStartOffset));
+
+            // Wrap - right (template building 1)
+            const wrapRightFloors = individualBuildingParams[1]?.floors ?? baseWrapFloors;
+            const wrapRightH = wrapRightFloors * floorH;
+            const wrapRightStartOffset = getStartLevelOffset(1, floorH);
+            buildingsGroup.add(createBox(ox + buildableW - wrapThickness, oz, wrapThickness, buildableD, wrapRightH, buildColor, 0, {
+                paramKey: 'floors',
+                currentValue: wrapRightFloors,
+                minValue: 3,
+                maxValue: 8,
+                sensitivity: 30
+            }, null, wrapRightFloors, 1, true, wrapRightStartOffset));
+
+            // Wrap - back (template building 2)
+            const wrapBackFloors = individualBuildingParams[2]?.floors ?? baseWrapFloors;
+            const wrapBackH = wrapBackFloors * floorH;
+            const wrapBackStartOffset = getStartLevelOffset(2, floorH);
+            buildingsGroup.add(createBox(ox + wrapThickness, oz + buildableD * 0.75, buildableW - wrapThickness * 2, buildableD * 0.25, wrapBackH, buildColor, 0, {
+                paramKey: 'floors',
+                currentValue: wrapBackFloors,
+                minValue: 3,
+                maxValue: 8,
+                sensitivity: 30
+            }, null, wrapBackFloors, 2, true, wrapBackStartOffset));
+
+        } else if (massingType === 'tower') {
+            const baseTowerFloors = massingConfig.towerFloors || 20;
+            const basePodiumFloors = massingConfig.podiumFloors || 3;
+            const towerWidthPct = massingConfig.towerWidthPct || 35;
+            const towerDepthPct = massingConfig.towerDepthPct || 35;
+            const towerW = buildableW * (towerWidthPct / 100);
+            const towerD = buildableD * (towerDepthPct / 100);
+            const towerOffX = (buildableW - towerW) / 2;
+            const towerOffZ = (buildableD - towerD) / 2;
+
+            // Podium (template building 0) - uses individual floors
+            const podiumFloors = individualBuildingParams[0]?.floors ?? basePodiumFloors;
+            const podiumH = podiumFloors * 12;
+            const podiumStartOffset = getStartLevelOffset(0, 12);
+            buildingsGroup.add(createBox(ox, oz, buildableW * 0.8, buildableD * 0.8, podiumH, podiumColor, 0, {
+                paramKey: 'floors',
+                currentValue: podiumFloors,
+                minValue: 1,
+                maxValue: 6,
+                sensitivity: 30
+            }, null, podiumFloors, 0, true, podiumStartOffset));
+            // Tower (template building 1) - uses individual floors
+            const towerFloors = individualBuildingParams[1]?.floors ?? baseTowerFloors;
+            const towerH = towerFloors * floorH;
+            const towerStartOffset = getStartLevelOffset(1, floorH);
+            buildingsGroup.add(createBox(ox + towerOffX, oz + towerOffZ, towerW, towerD, towerH, buildColor, podiumH, {
+                paramKey: 'floors',
+                currentValue: towerFloors,
+                minValue: 5,
+                maxValue: 60,
+                sensitivity: 60
+            }, {
+                width: {
+                    paramKey: 'towerWidthPct',
+                    currentValue: towerWidthPct,
+                    minValue: 20,
+                    maxValue: 80,
+                    sensitivity: 3
+                },
+                depth: {
+                    paramKey: 'towerDepthPct',
+                    currentValue: towerDepthPct,
+                    minValue: 20,
+                    maxValue: 80,
+                    sensitivity: 3
+                }
+            }, towerFloors, 1, true, towerStartOffset));  // Tower is template building 1
+
+        } else if (massingType === 'townhomes') {
+            const baseFloors = massingConfig.floors || 3;
+            const unitW = massingConfig.unitWidth || 24;
+            const unitD = massingConfig.unitDepth || 50;
+            const rowSpacing = 30;
+            const rows = Math.floor(buildableD / (unitD + rowSpacing));
+            const unitsPerRow = Math.floor(buildableW / unitW);
+            const rowWidth = Math.min(buildableW * 0.9, unitsPerRow * unitW);
+
+            // Each townhome row has its own individual height control
+            for (let r = 0; r < Math.min(rows, 4); r++) {
+                const rowZ = oz + r * (unitD + rowSpacing) + 10;
+                const individualFloors = individualBuildingParams[r]?.floors ?? baseFloors;
+                const rowH = individualFloors * floorH;
+                const townhomeStartOffset = getStartLevelOffset(r, floorH);
+                const townhomeHandleConfig = { paramKey: 'floors', currentValue: individualFloors, minValue: 2, maxValue: 4, sensitivity: 35 };
+                buildingsGroup.add(createBox(ox + 10, rowZ, rowWidth, unitD * 0.8, rowH, buildColor, 0,
+                    townhomeHandleConfig,
+                    null, individualFloors, r, true, townhomeStartOffset  // isTemplateBuilding = true with startLevel
+                ));
+            }
+
+        } else if (massingType === 'garden') {
+            const baseFloors = massingConfig.floors || 3;
+            const bldgW = buildableW * 0.25;
+            const bldgD = buildableD * 0.25;
+            const gap = 15;
+
+            // Surface parking
+            buildingsGroup.add(createBox(ox, oz, buildableW, buildableD, 2, parkingColor));
+
+            // Each building has its own height - use individual override if exists
+            const buildings = [
+                { x: ox + gap, z: oz + gap },
+                { x: ox + buildableW - bldgW - gap, z: oz + gap },
+                { x: ox + gap, z: oz + buildableD - bldgD - gap },
+                { x: ox + buildableW - bldgW - gap, z: oz + buildableD - bldgD - gap }
+            ];
+
+            buildings.forEach((pos, idx) => {
+                const individualFloors = individualBuildingParams[idx]?.floors ?? baseFloors;
+                const bldgH = individualFloors * floorH;
+                const gardenStartOffset = getStartLevelOffset(idx, floorH);
+                const handleConfig = {
+                    paramKey: 'floors',
+                    currentValue: individualFloors,
+                    minValue: 2,
+                    maxValue: 5,
+                    sensitivity: 30
+                };
+                buildingsGroup.add(createBox(pos.x, pos.z, bldgW, bldgD, bldgH, buildColor, 2, handleConfig, null, individualFloors, idx, true, gardenStartOffset));  // isTemplateBuilding = true with startLevel
+            });
+
+        } else if (massingType === 'gurban') {
+            const baseGurbanFloors = massingConfig.floors || 4;
+            const armW = buildableW * 0.3;
+            const armD = buildableD * 0.35;
+
+            // Surface parking
+            buildingsGroup.add(createBox(ox + armW, oz + armD, buildableW - armW, buildableD - armD, 2, parkingColor));
+
+            // L-shape vertical arm (template building 0)
+            const vertFloors = individualBuildingParams[0]?.floors ?? baseGurbanFloors;
+            const vertH = vertFloors * floorH;
+            const vertStartOffset = getStartLevelOffset(0, floorH);
+            buildingsGroup.add(createBox(ox, oz, armW, buildableD, vertH, buildColor, 2, {
+                paramKey: 'floors',
+                currentValue: vertFloors,
+                minValue: 2,
+                maxValue: 6,
+                sensitivity: 30
+            }, null, vertFloors, 0, true, vertStartOffset));
+
+            // L-shape horizontal arm (template building 1)
+            const horizFloors = individualBuildingParams[1]?.floors ?? baseGurbanFloors;
+            const horizH = horizFloors * floorH;
+            const horizStartOffset = getStartLevelOffset(1, floorH);
+            buildingsGroup.add(createBox(ox + armW, oz, buildableW - armW, armD, horizH, buildColor, 2, {
+                paramKey: 'floors',
+                currentValue: horizFloors,
+                minValue: 2,
+                maxValue: 6,
+                sensitivity: 30
+            }, null, horizFloors, 1, true, horizStartOffset));
+
+        } else if (buildingType === 'singlefamily') {
+            const baseFloors = massingConfig.floors || 2;
+
+            if (massingType === 'subdivision') {
+                const lotW = 60;
+                const lotD = 100;
+                const cols = Math.floor(buildableW / lotW);
+                const rows = Math.floor(buildableD / lotD);
+                let bldgIdx = 0;
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        const lotX = ox + c * lotW + 15;
+                        const lotZ = oz + r * lotD + 25;
+                        // Each house uses individual override if exists
+                        const individualFloors = individualBuildingParams[bldgIdx]?.floors ?? baseFloors;
+                        const houseH = individualFloors * floorH;
+                        const houseStartOffset = getStartLevelOffset(bldgIdx, floorH);
+                        const houseHandleConfig = { paramKey: 'floors', currentValue: individualFloors, minValue: 1, maxValue: 3, sensitivity: 40 };
+                        buildingsGroup.add(createBox(lotX, lotZ, lotW - 30, lotD * 0.4, houseH, buildColor, 0,
+                            houseHandleConfig,
+                            null, individualFloors, bldgIdx, true, houseStartOffset  // isTemplateBuilding = true with startLevel
+                        ));
+                        bldgIdx++;
+                    }
+                }
+            } else if (massingType === 'cluster') {
+                const centerPtX = ox + buildableW / 2;
+                const centerPtZ = oz + buildableD / 2;
+                const radius = Math.min(buildableW, buildableD) * 0.35;
+
+                // Central green circle (lawn area) - movable amenity
+                const greenRadius = radius * 0.5;
+                const greenGeometry = new THREE.CircleGeometry(greenRadius, 32);
+                greenGeometry.rotateX(-Math.PI / 2);
+                const greenMaterial = new THREE.MeshStandardMaterial({
+                    color: 0x22c55e,
+                    roughness: 0.8,
+                    metalness: 0,
+                    transparent: true,
+                    opacity: 0.4
+                });
+                const greenMesh = new THREE.Mesh(greenGeometry, greenMaterial);
+                // Apply amenity position offset if available
+                let greenPosX = centerPtX - centerX;
+                let greenPosZ = centerY - centerPtZ;
+                if (amenityPositions['cluster-green']) {
+                    greenPosX = amenityPositions['cluster-green'].x - centerX;
+                    greenPosZ = centerY - amenityPositions['cluster-green'].z;
+                }
+                greenMesh.position.set(greenPosX, 0.5, greenPosZ);
+                greenMesh.receiveShadow = true;
+                greenMesh.userData = { isAmenity: true, amenityId: 'cluster-green', type: 'garden' };
+                buildingsGroup.add(greenMesh);
+
+                for (let i = 0; i < 8; i++) {
+                    const angle = (i / 8) * Math.PI * 2;
+                    const hx = centerPtX + Math.cos(angle) * radius - 15;
+                    const hz = centerPtZ + Math.sin(angle) * radius - 15;
+                    // Each house uses individual override if exists
+                    const individualFloors = individualBuildingParams[i]?.floors ?? baseFloors;
+                    const houseH = individualFloors * floorH;
+                    const clusterStartOffset = getStartLevelOffset(i, floorH);
+                    const clusterHandleConfig = { paramKey: 'floors', currentValue: individualFloors, minValue: 1, maxValue: 3, sensitivity: 40 };
+                    buildingsGroup.add(createBox(hx, hz, 30, 30, houseH, buildColor, 0,
+                        clusterHandleConfig,
+                        null, individualFloors, i, true, clusterStartOffset  // isTemplateBuilding = true with startLevel
+                    ));
+                }
+            } else {
+                // Courtyard
+                const houseW = 35;
+                const houseD = 40;
+
+                // Courtyard green area in center
+                const courtX = ox + 20;
+                const courtZ = oz + 20;
+                const courtW = buildableW - 40;
+                const courtD = buildableD - 40;
+                const courtGeometry = new THREE.PlaneGeometry(courtW, courtD);
+                courtGeometry.rotateX(-Math.PI / 2);
+                const courtMaterial = new THREE.MeshStandardMaterial({
+                    color: 0x22c55e,
+                    roughness: 0.8,
+                    metalness: 0,
+                    transparent: true,
+                    opacity: 0.3
+                });
+                const courtMesh = new THREE.Mesh(courtGeometry, courtMaterial);
+                // Apply amenity position offset if available
+                let courtPosX = courtX + courtW / 2 - centerX;
+                let courtPosZ = centerY - (courtZ + courtD / 2);
+                if (amenityPositions['courtyard-green']) {
+                    courtPosX = amenityPositions['courtyard-green'].x - centerX;
+                    courtPosZ = centerY - amenityPositions['courtyard-green'].z;
+                }
+                courtMesh.position.set(courtPosX, 0.5, courtPosZ);
+                courtMesh.receiveShadow = true;
+                courtMesh.userData = { isAmenity: true, amenityId: 'courtyard-green', type: 'garden' };
+                buildingsGroup.add(courtMesh);
+
+                let bldgIdx = 0;
+                for (let i = 0; i < 3; i++) {
+                    // Top row
+                    const topFloors = individualBuildingParams[bldgIdx]?.floors ?? baseFloors;
+                    const topH = topFloors * floorH;
+                    const topStartOffset = getStartLevelOffset(bldgIdx, floorH);
+                    const topHandleConfig = { paramKey: 'floors', currentValue: topFloors, minValue: 1, maxValue: 3, sensitivity: 40 };
+                    buildingsGroup.add(createBox(ox + 30 + i * (houseW + 15), oz + 25, houseW, houseD, topH, buildColor, 0,
+                        topHandleConfig, null, topFloors, bldgIdx, true, topStartOffset  // isTemplateBuilding = true with startLevel
+                    ));
+                    bldgIdx++;
+
+                    // Bottom row
+                    const botFloors = individualBuildingParams[bldgIdx]?.floors ?? baseFloors;
+                    const botH = botFloors * floorH;
+                    const botStartOffset = getStartLevelOffset(bldgIdx, floorH);
+                    const botHandleConfig = { paramKey: 'floors', currentValue: botFloors, minValue: 1, maxValue: 3, sensitivity: 40 };
+                    buildingsGroup.add(createBox(ox + 30 + i * (houseW + 15), oz + buildableD - houseD - 25, houseW, houseD, botH, buildColor, 0,
+                        botHandleConfig, null, botFloors, bldgIdx, true, botStartOffset  // isTemplateBuilding = true with startLevel
+                    ));
+                    bldgIdx++;
+                }
+            }
+
+        } else if (buildingType === 'industrial') {
+            const baseClearHeight = massingConfig.clearHeight || massingConfig.floorHeight || 36;
+
+            if (massingType === 'bigbox') {
+                // Bigbox warehouse (template building 0) - uses individual clearHeight
+                const boxClearHeight = individualBuildingParams[0]?.clearHeight ?? baseClearHeight;
+                const bigboxStartOffset = getStartLevelOffset(0, boxClearHeight);
+                buildingsGroup.add(createBox(ox + 10, oz + 10, buildableW - 20, buildableD - 20, boxClearHeight, buildColor, 0, {
+                    paramKey: 'clearHeight',
+                    currentValue: boxClearHeight,
+                    minValue: 20,
+                    maxValue: 60,
+                    sensitivity: 1.5
+                }, null, null, 0, true, bigboxStartOffset));
+            } else if (massingType === 'multibuilding') {
+                const bldgW = (buildableW - 30) / 2;
+                const bldgD = (buildableD - 30) / 2;
+                // Each warehouse has individual height control
+                const buildings = [
+                    { x: ox + 10, z: oz + 10 },
+                    { x: ox + bldgW + 20, z: oz + 10 },
+                    { x: ox + 10, z: oz + bldgD + 20 },
+                    { x: ox + bldgW + 20, z: oz + bldgD + 20 }
+                ];
+                buildings.forEach((pos, idx) => {
+                    const individualHeight = individualBuildingParams[idx]?.clearHeight ?? baseClearHeight;
+                    const warehouseStartOffset = getStartLevelOffset(idx, individualHeight);
+                    const warehouseHandleConfig = {
+                        paramKey: 'clearHeight',
+                        currentValue: individualHeight,
+                        minValue: 20,
+                        maxValue: 60,
+                        sensitivity: 1.5
+                    };
+                    buildingsGroup.add(createBox(pos.x, pos.z, bldgW, bldgD, individualHeight, buildColor, 0, warehouseHandleConfig, null, null, idx, true, warehouseStartOffset));  // isTemplateBuilding = true with startLevel
+                });
+            } else if (massingType === 'podium') {
+                // Industrial podium: Warehouse over podium base
+                const basePodiumFloors = massingConfig.podiumFloors || 1;
+                const podiumHeight = massingConfig.podiumHeight || 14;
+                const baseWarehouseFloors = massingConfig.warehouseFloors || 1;
+                const warehouseClearHeight = massingConfig.clearHeight || 32;
+
+                // Podium base (template building 0)
+                const podiumFloors = individualBuildingParams[0]?.floors ?? basePodiumFloors;
+                const podiumH = podiumFloors * podiumHeight;
+                const indPodiumStartOffset = getStartLevelOffset(0, podiumHeight);
+                buildingsGroup.add(createBox(ox, oz, buildableW, buildableD, podiumH, podiumColor, 0, {
+                    paramKey: 'floors',
+                    currentValue: podiumFloors,
+                    minValue: 1,
+                    maxValue: 3,
+                    sensitivity: 35
+                }, null, podiumFloors, 0, true, indPodiumStartOffset));
+
+                // Warehouse above (template building 1)
+                const warehouseHeight = individualBuildingParams[1]?.clearHeight ?? warehouseClearHeight;
+                const warehouseInset = 15;
+                const indWarehouseStartOffset = getStartLevelOffset(1, warehouseHeight);
+                buildingsGroup.add(createBox(ox + warehouseInset, oz + warehouseInset, buildableW - warehouseInset * 2, buildableD - warehouseInset * 2, warehouseHeight, buildColor, podiumH, {
+                    paramKey: 'clearHeight',
+                    currentValue: warehouseHeight,
+                    minValue: 20,
+                    maxValue: 60,
+                    sensitivity: 1.5
+                }, null, null, 1, true, indWarehouseStartOffset));
+            } else {
+                // Cross-dock (template building 0) - uses individual clearHeight
+                const crossDockHeight = individualBuildingParams[0]?.clearHeight ?? baseClearHeight;
+                const crossdockStartOffset = getStartLevelOffset(0, crossDockHeight);
+                const dockH = massingConfig.dockHeight || crossDockHeight * 0.6;
+                const dockWidth = buildableW * 0.15;
+                buildingsGroup.add(createBox(ox + dockWidth, oz + 10, buildableW - dockWidth * 2, buildableD - 20, crossDockHeight, buildColor, 0, {
+                    paramKey: 'clearHeight',
+                    currentValue: crossDockHeight,
+                    minValue: 20,
+                    maxValue: 60,
+                    sensitivity: 1.5
+                }, null, null, 0, true, crossdockStartOffset));
+                // Dock areas (not template buildings - infrastructure)
+                buildingsGroup.add(createBox(ox, oz + 10, dockWidth, buildableD - 20, dockH, podiumColor));
+                buildingsGroup.add(createBox(ox + buildableW - dockWidth, oz + 10, dockWidth, buildableD - 20, dockH, podiumColor));
+            }
+
+        } else if (buildingType === 'hotel') {
+            if (massingType === 'courtyard') {
+                const baseHotelFloors = massingConfig.floors || 5;
+                const armThick = buildableW * 0.25;
+                // Courtyard wing 0 (uses individual floors)
+                const wing0Floors = individualBuildingParams[0]?.floors ?? baseHotelFloors;
+                const wing0H = wing0Floors * floorH;
+                const hotelWing0StartOffset = getStartLevelOffset(0, floorH);
+                buildingsGroup.add(createBox(ox, oz, armThick, buildableD, wing0H, buildColor, 0, {
+                    paramKey: 'floors',
+                    currentValue: wing0Floors,
+                    minValue: 2,
+                    maxValue: 10,
+                    sensitivity: 35
+                }, null, wing0Floors, 0, true, hotelWing0StartOffset));
+                // Courtyard wing 1 (uses individual floors)
+                const wing1Floors = individualBuildingParams[1]?.floors ?? baseHotelFloors;
+                const wing1H = wing1Floors * floorH;
+                const hotelWing1StartOffset = getStartLevelOffset(1, floorH);
+                buildingsGroup.add(createBox(ox + buildableW - armThick, oz, armThick, buildableD, wing1H, buildColor, 0, {
+                    paramKey: 'floors',
+                    currentValue: wing1Floors,
+                    minValue: 2,
+                    maxValue: 10,
+                    sensitivity: 35
+                }, null, wing1Floors, 1, true, hotelWing1StartOffset));
+                // Courtyard wing 2 (uses individual floors)
+                const wing2Floors = individualBuildingParams[2]?.floors ?? baseHotelFloors;
+                const wing2H = wing2Floors * floorH;
+                const hotelWing2StartOffset = getStartLevelOffset(2, floorH);
+                buildingsGroup.add(createBox(ox + armThick, oz, buildableW - armThick * 2, buildableD * 0.3, wing2H, buildColor, 0, {
+                    paramKey: 'floors',
+                    currentValue: wing2Floors,
+                    minValue: 2,
+                    maxValue: 10,
+                    sensitivity: 35
+                }, null, wing2Floors, 2, true, hotelWing2StartOffset));
+
+                // Courtyard pool area (armThick already defined above) - movable amenity
+                const poolX = ox + armThick + 10;
+                const poolZ = oz + buildableD * 0.35;
+                const poolW = buildableW - armThick * 2 - 20;
+                const poolD = buildableD * 0.5 - 20;
+                const poolGeometry = new THREE.PlaneGeometry(poolW, poolD);
+                poolGeometry.rotateX(-Math.PI / 2);
+                const poolMaterial = new THREE.MeshStandardMaterial({
+                    color: 0x0ea5e9,
+                    roughness: 0.2,
+                    metalness: 0.3,
+                    transparent: true,
+                    opacity: 0.6
+                });
+                const poolMesh = new THREE.Mesh(poolGeometry, poolMaterial);
+                // Apply amenity position offset if available
+                let poolPosX = poolX + poolW / 2 - centerX;
+                let poolPosZ = centerY - (poolZ + poolD / 2);
+                if (amenityPositions['hotel-pool']) {
+                    poolPosX = amenityPositions['hotel-pool'].x - centerX;
+                    poolPosZ = centerY - amenityPositions['hotel-pool'].z;
+                }
+                poolMesh.position.set(poolPosX, 0.5, poolPosZ);
+                poolMesh.receiveShadow = true;
+                poolMesh.userData = { isAmenity: true, amenityId: 'hotel-pool', type: 'pool' };
+                buildingsGroup.add(poolMesh);
+            } else if (massingType === 'tower') {
+                const baseTowerFloors = massingConfig.towerFloors || 12;
+                const basePodiumFloors = massingConfig.podiumFloors || 2;
+                const towerW = buildableW * 0.5;
+                const towerD = buildableD * 0.5;
+                // Podium (template building 0) - uses individual floors
+                const podiumFloors = individualBuildingParams[0]?.floors ?? basePodiumFloors;
+                const podiumH = podiumFloors * 14;
+                const hotelPodiumStartOffset = getStartLevelOffset(0, 14);
+                buildingsGroup.add(createBox(ox, oz, buildableW * 0.8, buildableD * 0.4, podiumH, podiumColor, 0, {
+                    paramKey: 'floors',
+                    currentValue: podiumFloors,
+                    minValue: 1,
+                    maxValue: 5,
+                    sensitivity: 30
+                }, null, podiumFloors, 0, true, hotelPodiumStartOffset));
+                // Tower (template building 1) - uses individual floors
+                const towerFloors = individualBuildingParams[1]?.floors ?? baseTowerFloors;
+                const towerH = towerFloors * floorH;
+                const hotelTowerStartOffset = getStartLevelOffset(1, floorH);
+                buildingsGroup.add(createBox(ox + (buildableW - towerW) / 2, oz + 10, towerW, towerD, towerH, buildColor, podiumH, {
+                    paramKey: 'floors',
+                    currentValue: towerFloors,
+                    minValue: 4,
+                    maxValue: 30,
+                    sensitivity: 45
+                }, null, towerFloors, 1, true, hotelTowerStartOffset));
+            } else {
+                // Linear (template building 0) - uses individual floors
+                const baseFloors = massingConfig.floors || 6;
+                const hotelFloors = individualBuildingParams[0]?.floors ?? baseFloors;
+                const hotelH = hotelFloors * floorH;
+                const linearStartOffset = getStartLevelOffset(0, floorH);
+                buildingsGroup.add(createBox(ox + 10, oz + buildableD * 0.3, buildableW - 20, buildableD * 0.4, hotelH, buildColor, 0, {
+                    paramKey: 'floors',
+                    currentValue: hotelFloors,
+                    minValue: 2,
+                    maxValue: 12,
+                    sensitivity: 35
+                }, null, hotelFloors, 0, true, linearStartOffset));
+
+                // Pool area in front - movable amenity
+                const poolX = ox + buildableW * 0.3;
+                const poolZ = oz + buildableD * 0.75;
+                const poolW = buildableW * 0.4;
+                const poolD = buildableD * 0.15;
+                const poolGeometry = new THREE.PlaneGeometry(poolW, poolD);
+                poolGeometry.rotateX(-Math.PI / 2);
+                const poolMaterial = new THREE.MeshStandardMaterial({
+                    color: 0x0ea5e9,
+                    roughness: 0.2,
+                    metalness: 0.3,
+                    transparent: true,
+                    opacity: 0.6
+                });
+                const poolMesh = new THREE.Mesh(poolGeometry, poolMaterial);
+                // Apply amenity position offset if available
+                let poolPosX = poolX + poolW / 2 - centerX;
+                let poolPosZ = centerY - (poolZ + poolD / 2);
+                if (amenityPositions['hotel-pool']) {
+                    poolPosX = amenityPositions['hotel-pool'].x - centerX;
+                    poolPosZ = centerY - amenityPositions['hotel-pool'].z;
+                }
+                poolMesh.position.set(poolPosX, 0.5, poolPosZ);
+                poolMesh.receiveShadow = true;
+                poolMesh.userData = { isAmenity: true, amenityId: 'hotel-pool', type: 'pool' };
+                buildingsGroup.add(poolMesh);
+            }
+
+        } else if (buildingType === 'retail') {
+            const retailH = massingConfig.floorHeight || 18;
+            // Surface parking
+            buildingsGroup.add(createBox(ox, oz, buildableW, buildableD, 2, parkingColor));
+
+            if (massingType === 'lshaped') {
+                // L-shaped strip 0 (uses individual floorHeight)
+                const strip0Height = individualBuildingParams[0]?.floorHeight ?? retailH;
+                const lStrip0StartOffset = getStartLevelOffset(0, strip0Height);
+                buildingsGroup.add(createBox(ox, oz, buildableW * 0.2, buildableD, strip0Height, buildColor, 2, {
+                    paramKey: 'floorHeight',
+                    currentValue: strip0Height,
+                    minValue: 14,
+                    maxValue: 30,
+                    sensitivity: 2.5
+                }, null, null, 0, true, lStrip0StartOffset));
+                // L-shaped strip 1
+                const strip1Height = individualBuildingParams[1]?.floorHeight ?? retailH;
+                const lStrip1StartOffset = getStartLevelOffset(1, strip1Height);
+                buildingsGroup.add(createBox(ox, oz + buildableD - buildableD * 0.25, buildableW, buildableD * 0.25, strip1Height, buildColor, 2, {
+                    paramKey: 'floorHeight',
+                    currentValue: strip1Height,
+                    minValue: 14,
+                    maxValue: 30,
+                    sensitivity: 2.5
+                }, null, null, 1, true, lStrip1StartOffset));
+            } else if (massingType === 'ushaped') {
+                const anchorH = massingConfig.anchorHeight || 28;
+                // U-shaped wing 0
+                const wing0Height = individualBuildingParams[0]?.floorHeight ?? retailH;
+                const uWing0StartOffset = getStartLevelOffset(0, wing0Height);
+                buildingsGroup.add(createBox(ox, oz, buildableW * 0.2, buildableD, wing0Height, buildColor, 2, {
+                    paramKey: 'floorHeight',
+                    currentValue: wing0Height,
+                    minValue: 14,
+                    maxValue: 30,
+                    sensitivity: 2.5
+                }, null, null, 0, true, uWing0StartOffset));
+                // U-shaped wing 1
+                const wing1Height = individualBuildingParams[1]?.floorHeight ?? retailH;
+                const uWing1StartOffset = getStartLevelOffset(1, wing1Height);
+                buildingsGroup.add(createBox(ox + buildableW * 0.8, oz, buildableW * 0.2, buildableD, wing1Height, buildColor, 2, {
+                    paramKey: 'floorHeight',
+                    currentValue: wing1Height,
+                    minValue: 14,
+                    maxValue: 30,
+                    sensitivity: 2.5
+                }, null, null, 1, true, uWing1StartOffset));
+                // Anchor store 2
+                const anchorHeight = individualBuildingParams[2]?.floorHeight ?? anchorH;
+                const anchorStartOffset = getStartLevelOffset(2, anchorHeight);
+                buildingsGroup.add(createBox(ox + buildableW * 0.2, oz, buildableW * 0.6, buildableD * 0.35, anchorHeight, buildColor, 2, {
+                    paramKey: 'floorHeight',
+                    currentValue: anchorHeight,
+                    minValue: 14,
+                    maxValue: 40,
+                    sensitivity: 2.5
+                }, null, null, 2, true, anchorStartOffset));
+            } else if (massingType === 'podium') {
+                // Retail podium: Retail over parking podium
+                const basePodiumFloors = massingConfig.podiumFloors || 2;
+                const podiumFloorH = massingConfig.podiumHeight || 11;
+                const baseRetailHeight = massingConfig.floorHeight || 18;
+
+                // Podium parking base (template building 0)
+                const podiumFloors = individualBuildingParams[0]?.floors ?? basePodiumFloors;
+                const podiumH = podiumFloors * podiumFloorH;
+                const retailPodiumStartOffset = getStartLevelOffset(0, podiumFloorH);
+                buildingsGroup.add(createBox(ox, oz, buildableW, buildableD, podiumH, podiumColor, 0, {
+                    paramKey: 'floors',
+                    currentValue: podiumFloors,
+                    minValue: 1,
+                    maxValue: 4,
+                    sensitivity: 30
+                }, null, podiumFloors, 0, true, retailPodiumStartOffset));
+
+                // Retail above (template building 1)
+                const retailHeight = individualBuildingParams[1]?.floorHeight ?? baseRetailHeight;
+                const retailInset = 10;
+                const retailAboveStartOffset = getStartLevelOffset(1, retailHeight);
+                buildingsGroup.add(createBox(ox + retailInset, oz + retailInset, buildableW - retailInset * 2, buildableD - retailInset * 2, retailHeight, buildColor, podiumH, {
+                    paramKey: 'floorHeight',
+                    currentValue: retailHeight,
+                    minValue: 14,
+                    maxValue: 30,
+                    sensitivity: 2.5
+                }, null, null, 1, true, retailAboveStartOffset));
+            } else {
+                // Inline strip (template building 0)
+                const inlineHeight = individualBuildingParams[0]?.floorHeight ?? retailH;
+                const inlineStartOffset = getStartLevelOffset(0, inlineHeight);
+                buildingsGroup.add(createBox(ox + 10, oz + buildableD * 0.7, buildableW - 20, buildableD * 0.25, inlineHeight, buildColor, 2, {
+                    paramKey: 'floorHeight',
+                    currentValue: inlineHeight,
+                    minValue: 14,
+                    maxValue: 30,
+                    sensitivity: 2.5
+                }, null, null, 0, true, inlineStartOffset));
+            }
+
+        } else if (buildingType === 'datacenter') {
+            const dcFloors = massingConfig.floors || 2;
+            const dcH = dcFloors * (massingConfig.floorHeight || 16);
+
+            if (massingType === 'campus') {
+                const bldgW = (buildableW - 40) / 2;
+                const bldgD = (buildableD - 40) / 2;
+                const dcFloorH = massingConfig.floorHeight || 16;
+                // Data hall 0 (uses individual floors)
+                const hall0Floors = individualBuildingParams[0]?.floors ?? dcFloors;
+                const hall0H = hall0Floors * dcFloorH;
+                const hall0StartOffset = getStartLevelOffset(0, dcFloorH);
+                buildingsGroup.add(createBox(ox + 10, oz + 10, bldgW, bldgD, hall0H, buildColor, 0, {
+                    paramKey: 'floors',
+                    currentValue: hall0Floors,
+                    minValue: 1,
+                    maxValue: 4,
+                    sensitivity: 40
+                }, null, hall0Floors, 0, true, hall0StartOffset));
+                // Data hall 1
+                const hall1Floors = individualBuildingParams[1]?.floors ?? dcFloors;
+                const hall1H = hall1Floors * dcFloorH;
+                const hall1StartOffset = getStartLevelOffset(1, dcFloorH);
+                buildingsGroup.add(createBox(ox + bldgW + 30, oz + 10, bldgW, bldgD, hall1H, buildColor, 0, {
+                    paramKey: 'floors',
+                    currentValue: hall1Floors,
+                    minValue: 1,
+                    maxValue: 4,
+                    sensitivity: 40
+                }, null, hall1Floors, 1, true, hall1StartOffset));
+                // Data hall 2
+                const hall2Floors = individualBuildingParams[2]?.floors ?? dcFloors;
+                const hall2H = hall2Floors * dcFloorH;
+                const hall2StartOffset = getStartLevelOffset(2, dcFloorH);
+                buildingsGroup.add(createBox(ox + 10, oz + bldgD + 30, bldgW, bldgD, hall2H, buildColor, 0, {
+                    paramKey: 'floors',
+                    currentValue: hall2Floors,
+                    minValue: 1,
+                    maxValue: 4,
+                    sensitivity: 40
+                }, null, hall2Floors, 2, true, hall2StartOffset));
+                // Data hall 3
+                const hall3Floors = individualBuildingParams[3]?.floors ?? dcFloors;
+                const hall3H = hall3Floors * dcFloorH;
+                const hall3StartOffset = getStartLevelOffset(3, dcFloorH);
+                buildingsGroup.add(createBox(ox + bldgW + 30, oz + bldgD + 30, bldgW, bldgD, hall3H, buildColor, 0, {
+                    paramKey: 'floors',
+                    currentValue: hall3Floors,
+                    minValue: 1,
+                    maxValue: 4,
+                    sensitivity: 40
+                }, null, hall3Floors, 3, true, hall3StartOffset));
+            } else if (massingType === 'podium') {
+                // Datacenter podium: Data center over podium base
+                const basePodiumFloors = massingConfig.podiumFloors || 1;
+                const podiumFloorH = massingConfig.podiumHeight || 14;
+                const baseDataFloors = massingConfig.dataFloors || 2;
+                const dcFloorH = massingConfig.floorHeight || 16;
+
+                // Podium base (template building 0)
+                const podiumFloors = individualBuildingParams[0]?.floors ?? basePodiumFloors;
+                const podiumH = podiumFloors * podiumFloorH;
+                const dcPodiumStartOffset = getStartLevelOffset(0, podiumFloorH);
+                buildingsGroup.add(createBox(ox, oz, buildableW, buildableD, podiumH, podiumColor, 0, {
+                    paramKey: 'floors',
+                    currentValue: podiumFloors,
+                    minValue: 1,
+                    maxValue: 3,
+                    sensitivity: 35
+                }, null, podiumFloors, 0, true, dcPodiumStartOffset));
+
+                // Data hall above (template building 1)
+                const dataFloors = individualBuildingParams[1]?.floors ?? baseDataFloors;
+                const dataH = dataFloors * dcFloorH;
+                const dcInset = 15;
+                const dcHallStartOffset = getStartLevelOffset(1, dcFloorH);
+                buildingsGroup.add(createBox(ox + dcInset, oz + dcInset, buildableW - dcInset * 2, buildableD - dcInset * 2, dataH, buildColor, podiumH, {
+                    paramKey: 'floors',
+                    currentValue: dataFloors,
+                    minValue: 1,
+                    maxValue: 4,
+                    sensitivity: 40
+                }, null, dataFloors, 1, true, dcHallStartOffset));
+            } else {
+                // Single datacenter hall (template building 0)
+                const hallFloors = individualBuildingParams[0]?.floors ?? dcFloors;
+                const dcFloorH = massingConfig.floorHeight || 16;
+                const hallH = hallFloors * dcFloorH;
+                const singleDcStartOffset = getStartLevelOffset(0, dcFloorH);
+                buildingsGroup.add(createBox(ox + 15, oz + 15, buildableW - 30, buildableD - 30, hallH, buildColor, 0, {
+                    paramKey: 'floors',
+                    currentValue: hallFloors,
+                    minValue: 1,
+                    maxValue: 4,
+                    sensitivity: 40
+                }, null, hallFloors, 0, true, singleDcStartOffset));
+            }
+
+        } else if (buildingType === 'parking') {
+            if (massingType === 'surface') {
+                // ================================================================
+                // SURFACE PARKING - PROFESSIONAL TESTFIT-STYLE 3D LAYOUT
+                // Uses shared parkingLayout from parent for exact sync with 2D view
+                // Like Rhino: both views show the same geometry from different angles
+                // ================================================================
+
+                // Skip if no parking layout calculated
+                if (!parkingLayout) {
+                    console.warn('3D Parking: No parkingLayout provided');
+                    return;
+                }
+
+                // === USE SHARED LAYOUT FROM PARENT (exact sync with 2D) ===
+                const {
+                    stallWidth, stallDepth, aisleWidth, driveType, effectiveAisleWidth,
+                    loopWidth, loopInset,
+                    loopOX, loopOY, loopTotalW, loopTotalD,
+                    loopInnerX, loopInnerY, loopInnerW, loopInnerH,
+                    moduleDepth, numModules, stallsPerRow,
+                    moduleGridDepth, remainingD, endRowFits,
+                    totalStalls,
+                    // Polygon-based geometry for irregular shapes
+                    isIrregular,
+                    loopOuterPolygon,
+                    loopInnerPolygon,
+                    interiorPolygon,
+                    stallPositions,
+                    // Angled parking geometry (45°, 60°, 90°)
+                    parkingAngle = 90,
+                    angledGeometry = null,
+                    effectiveStallModuleWidth = stallWidth,
+                    effectiveStallDepth = stallDepth
+                } = parkingLayout;
+
+                // Determine if we're using angled parking (non-perpendicular)
+                const isAngledParking = parkingAngle !== 90 && angledGeometry !== null;
+
+                // Map 2D Y coords to 3D Z coords
+                const interiorX = loopInnerX;
+                const interiorZ = loopInnerY;
+                const interiorW = loopInnerW;
+                const interiorD = loopInnerH;
+
+                // Additional config from massingConfig (visual options)
+                const hasFireLane = massingConfig.fireLane !== false;
+                const hasEntryExit = massingConfig.hasEntryExit !== false;
+                const hasGateBooth = massingConfig.hasGateBooth !== false;
+                const hasCrosswalk = massingConfig.hasCrosswalk !== false;
+                const hasCrossAisle = massingConfig.hasCrossAisle === true; // Config check only, width check done when drawing
+                const entryExitType = massingConfig.entryExitType || 'standard';
+
+                // Stall mix percentages (per IBC/ADA standards)
+                const adaPct = massingConfig.adaPct ?? 3;
+                const evPct = massingConfig.evPct ?? 2;
+                const compactPct = massingConfig.compactPct ?? 10;
+
+                // Landscape islands (optional, matches 2D view)
+                const hasLandscaping = massingConfig.hasLandscaping === true;
+                const landscapeInterval = massingConfig.landscapeInterval || 12;
+                const endIslands = massingConfig.endIslands === true; // SYNCED with 2D
+
+                // Display options
+                const showLightPoles = massingConfig.showLightPoles !== false;
+                const showStallNumbers = massingConfig.showStallNumbers !== false;
+
+                // Check if area is too small for parking
+                const parkingAreaTooSmall = numModules === 0 || stallsPerRow === 0;
+
+                // Debug logging removed for production
+
+                // Stall positioning: use interiorX directly (no centering) to match 2D
+                // 2D uses bayX = interiorX for stall starting position
+
+                // ============================================================
+                // MATERIALS - Professional color scheme
+                // ============================================================
+                const asphaltColor = 0x4a4a4a;  // Medium gray asphalt
+                const driveColor = 0x4a4a4a;    // Same as asphalt for consistent look
+                const standardColor = 0xfbbf24; // Yellow - standard stalls
+                const adaColor = 0x3b82f6;      // Blue - ADA
+                const evColor = 0x22c55e;       // Green - EV charging
+                const compactColor = 0xa855f7;  // Purple - compact
+                const stripeColor = 0xffffff;   // White stripes
+                const fireLaneColor = 0xef4444; // Red fire lane
+                const entryColor = 0x22c55e;    // Green entry
+                const exitColor = 0xef4444;     // Red exit
+
+                // Create materials with polygonOffset to prevent z-fighting
+                // Higher offset = rendered further back (lower priority)
+                const asphaltMat = new THREE.MeshStandardMaterial({
+                    color: asphaltColor,
+                    roughness: 0.9,
+                    polygonOffset: true,
+                    polygonOffsetFactor: 4,
+                    polygonOffsetUnits: 4
+                });
+                const driveMat = new THREE.MeshStandardMaterial({
+                    color: driveColor,
+                    roughness: 0.85,
+                    polygonOffset: true,
+                    polygonOffsetFactor: 3,
+                    polygonOffsetUnits: 3
+                });
+                const stripeMat = new THREE.MeshBasicMaterial({
+                    color: stripeColor,
+                    polygonOffset: true,
+                    polygonOffsetFactor: -2,
+                    polygonOffsetUnits: -2
+                });
+                const fireLaneMat = new THREE.MeshBasicMaterial({
+                    color: fireLaneColor,
+                    polygonOffset: true,
+                    polygonOffsetFactor: -1,
+                    polygonOffsetUnits: -1
+                });
+
+                // ============================================================
+                // HELPER: Create text sprite with background for stall labels
+                // ============================================================
+                const createTextSprite = (text, size = 4, bgColor = null, textColor = '#ffffff') => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = 256;
+                    canvas.height = 128;
+
+                    // Draw background if specified
+                    if (bgColor) {
+                        ctx.fillStyle = bgColor;
+                        ctx.beginPath();
+                        ctx.roundRect(8, 8, 240, 112, 16);
+                        ctx.fill();
+                        // Border
+                        ctx.strokeStyle = '#ffffff';
+                        ctx.lineWidth = 4;
+                        ctx.stroke();
+                    }
+
+                    // Draw text
+                    ctx.font = 'bold 64px Arial, sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillStyle = textColor;
+                    ctx.fillText(text, 128, 64);
+
+                    // Create texture from canvas
+                    const texture = new THREE.CanvasTexture(canvas);
+                    texture.needsUpdate = true;
+
+                    // Create sprite material
+                    const spriteMat = new THREE.SpriteMaterial({
+                        map: texture,
+                        transparent: true,
+                        depthTest: false
+                    });
+
+                    // Create sprite (wider aspect ratio for text)
+                    const sprite = new THREE.Sprite(spriteMat);
+                    sprite.scale.set(size * 2, size, 1);
+                    return sprite;
+                };
+
+                // Simple icon sprite (single character)
+                const createIconSprite = (icon, size = 4) => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = 128;
+                    canvas.height = 128;
+
+                    // Draw icon
+                    ctx.font = 'bold 80px Arial, sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillText(icon, 64, 64);
+
+                    const texture = new THREE.CanvasTexture(canvas);
+                    texture.needsUpdate = true;
+
+                    const spriteMat = new THREE.SpriteMaterial({
+                        map: texture,
+                        transparent: true,
+                        depthTest: false
+                    });
+
+                    const sprite = new THREE.Sprite(spriteMat);
+                    sprite.scale.set(size, size, 1);
+                    return sprite;
+                };
+
+                // ============================================================
+                // 1. ASPHALT BASE (lowest layer)
+                // ============================================================
+                const baseGeo = new THREE.PlaneGeometry(buildableW, buildableD);
+                baseGeo.rotateX(-Math.PI / 2);
+                const baseMesh = new THREE.Mesh(baseGeo, asphaltMat);
+                baseMesh.position.set(
+                    ox + buildableW / 2 - centerX,
+                    0.005, // Very bottom
+                    centerY - (oz + buildableD / 2)
+                );
+                baseMesh.receiveShadow = true;
+                buildingsGroup.add(baseMesh);
+
+                // Show "Area Too Small" message if lot is too small for parking (matches 2D view)
+                if (parkingAreaTooSmall) {
+                    // Create floating text sprite with "Area Too Small" message
+                    const warningCanvas = document.createElement('canvas');
+                    const warningCtx = warningCanvas.getContext('2d');
+                    warningCanvas.width = 512;
+                    warningCanvas.height = 256;
+
+                    // Background
+                    warningCtx.fillStyle = 'rgba(239, 68, 68, 0.9)';
+                    warningCtx.beginPath();
+                    warningCtx.roundRect(16, 16, 480, 224, 24);
+                    warningCtx.fill();
+
+                    // Border
+                    warningCtx.strokeStyle = '#ffffff';
+                    warningCtx.lineWidth = 4;
+                    warningCtx.stroke();
+
+                    // Title text
+                    warningCtx.fillStyle = '#ffffff';
+                    warningCtx.font = 'bold 48px Arial, sans-serif';
+                    warningCtx.textAlign = 'center';
+                    warningCtx.textBaseline = 'middle';
+                    warningCtx.fillText('Area Too Small', 256, 90);
+
+                    // Subtitle
+                    warningCtx.font = '32px Arial, sans-serif';
+                    warningCtx.fillText(`Need 60'×60' min`, 256, 150);
+                    warningCtx.fillText(`Have ${Math.round(interiorW)}'×${Math.round(interiorD)}'`, 256, 190);
+
+                    const warningTexture = new THREE.CanvasTexture(warningCanvas);
+                    warningTexture.needsUpdate = true;
+
+                    const warningMat = new THREE.SpriteMaterial({
+                        map: warningTexture,
+                        transparent: true,
+                        depthTest: false
+                    });
+
+                    const warningSprite = new THREE.Sprite(warningMat);
+                    warningSprite.scale.set(40, 20, 1);
+                    warningSprite.position.set(
+                        ox + buildableW / 2 - centerX,
+                        15, // Float above the ground
+                        centerY - (oz + buildableD / 2)
+                    );
+                    buildingsGroup.add(warningSprite);
+                }
+
+                // ============================================================
+                // 2. PERIMETER CIRCULATION LOOP (around parking bays)
+                // Layer hierarchy: Loop (0.03) < Interior (0.05) < Aisles (0.08) < Stalls (0.12)
+                // Uses shared layout values from parkingLayout
+                // Supports irregular polygon shapes
+                // ============================================================
+                const loopY = 0.03; // Perimeter loop - base driving surface
+                // Use loopOX/loopOY from shared layout, map Y to Z for 3D
+                const loopOZ = loopOY; // loopOY from 2D becomes loopOZ in 3D
+
+                // Corner radius for rounded corners (synced with 2D view)
+                const cornerRadius = Math.min(20, loopWidth); // 20ft radius or loop width, whichever is smaller
+                const innerR = Math.max(cornerRadius - loopWidth, 2);
+
+                // Helper function to add polygon path to THREE.Shape
+                const addPolygonPath = (shape, polygon, isHole = false) => {
+                    if (!polygon || polygon.length < 3) return;
+
+                    if (isHole) {
+                        // For holes, go counter-clockwise (reverse order)
+                        shape.moveTo(polygon[0].x, polygon[0].y);
+                        for (let i = polygon.length - 1; i >= 0; i--) {
+                            shape.lineTo(polygon[i].x, polygon[i].y);
+                        }
+                    } else {
+                        // For outer shape, go clockwise
+                        shape.moveTo(polygon[0].x, polygon[0].y);
+                        for (let i = 1; i < polygon.length; i++) {
+                            shape.lineTo(polygon[i].x, polygon[i].y);
+                        }
+                    }
+                    shape.closePath();
+                };
+
+                // Helper function to draw rounded rectangle path
+                // THREE.js Shape arc: arc(centerX, centerY, radius, startAngle, endAngle, clockwise)
+                const addRoundedRectPath = (path, x, y, w, h, r, isHole = false) => {
+                    // For outer shape: clockwise direction
+                    // For hole: counter-clockwise direction
+                    if (!isHole) {
+                        // Outer rectangle - clockwise
+                        path.moveTo(x + r, y);
+                        path.lineTo(x + w - r, y);
+                        path.absarc(x + w - r, y + r, r, -Math.PI / 2, 0, false);
+                        path.lineTo(x + w, y + h - r);
+                        path.absarc(x + w - r, y + h - r, r, 0, Math.PI / 2, false);
+                        path.lineTo(x + r, y + h);
+                        path.absarc(x + r, y + h - r, r, Math.PI / 2, Math.PI, false);
+                        path.lineTo(x, y + r);
+                        path.absarc(x + r, y + r, r, Math.PI, Math.PI * 1.5, false);
+                    } else {
+                        // Inner hole - counter-clockwise
+                        path.moveTo(x + r, y);
+                        path.absarc(x + r, y + r, r, -Math.PI / 2, Math.PI, true);
+                        path.lineTo(x, y + h - r);
+                        path.absarc(x + r, y + h - r, r, Math.PI, Math.PI / 2, true);
+                        path.lineTo(x + w - r, y + h);
+                        path.absarc(x + w - r, y + h - r, r, Math.PI / 2, 0, true);
+                        path.lineTo(x + w, y + r);
+                        path.absarc(x + w - r, y + r, r, 0, -Math.PI / 2, true);
+                    }
+                    path.closePath();
+                };
+
+                // Create loop shape - either polygon-based or rounded rectangle
+                const loopShape = new THREE.Shape();
+
+                if (isIrregular && loopOuterPolygon && loopOuterPolygon.length >= 3) {
+                    // === IRREGULAR SHAPE: Use polygon paths ===
+                    addPolygonPath(loopShape, loopOuterPolygon, false);
+
+                    // Add inner polygon as hole
+                    if (!parkingAreaTooSmall && loopInnerPolygon && loopInnerPolygon.length >= 3) {
+                        const holePath = new THREE.Path();
+                        addPolygonPath(holePath, loopInnerPolygon, true);
+                        loopShape.holes.push(holePath);
+                    }
+                } else {
+                    // === RECTANGULAR SHAPE: Use rounded rectangles ===
+                    addRoundedRectPath(loopShape, loopOX, loopOZ, loopTotalW, loopTotalD, cornerRadius, false);
+
+                    // Inner cutout (counter-clockwise to create hole) - only if interior is valid
+                    if (!parkingAreaTooSmall && interiorW > 0 && interiorD > 0) {
+                        const holePath = new THREE.Path();
+                        addRoundedRectPath(holePath, interiorX, interiorZ, interiorW, interiorD, innerR, true);
+                        loopShape.holes.push(holePath);
+                    }
+                }
+
+                const loopGeo = new THREE.ShapeGeometry(loopShape);
+                loopGeo.rotateX(-Math.PI / 2);
+                const loopMesh = new THREE.Mesh(loopGeo, driveMat);
+                loopMesh.position.set(-centerX, loopY, centerY);
+                buildingsGroup.add(loopMesh);
+
+                // ============================================================
+                // 3. FIRE LANE MARKINGS (red border lines)
+                // Using thin 3D boxes instead of planes to avoid z-fighting
+                // ============================================================
+                if (hasFireLane) {
+                    const lineW = 1.0; // Slightly wider
+                    const lineThickness = 0.15; // Thin 3D box height
+
+                    const createFireLine = (x, z, w, d) => {
+                        // Use BoxGeometry instead of PlaneGeometry to avoid z-fighting
+                        const geo = new THREE.BoxGeometry(w, lineThickness, d);
+                        const mesh = new THREE.Mesh(geo, fireLaneMat);
+                        mesh.position.set(x - centerX, lineThickness / 2 + 0.01, centerY - z);
+                        buildingsGroup.add(mesh);
+                    };
+
+                    // Helper to draw fire lane lines along polygon edges
+                    const drawFireLaneAlongPolygon = (polygon) => {
+                        if (!polygon || polygon.length < 3) return;
+                        for (let i = 0; i < polygon.length; i++) {
+                            const p1 = polygon[i];
+                            const p2 = polygon[(i + 1) % polygon.length];
+                            const dx = p2.x - p1.x;
+                            const dy = p2.y - p1.y;
+                            const edgeLen = Math.sqrt(dx * dx + dy * dy);
+                            if (edgeLen < 2) continue;
+
+                            const angle = Math.atan2(dy, dx);
+                            const midX = (p1.x + p2.x) / 2;
+                            const midZ = (p1.y + p2.y) / 2;
+
+                            // Create box along edge
+                            const geo = new THREE.BoxGeometry(edgeLen, lineThickness, lineW);
+                            geo.rotateY(-angle);
+                            const mesh = new THREE.Mesh(geo, fireLaneMat);
+                            mesh.position.set(midX - centerX, lineThickness / 2 + 0.01, centerY - midZ);
+                            buildingsGroup.add(mesh);
+                        }
+                    };
+
+                    if (isIrregular && loopOuterPolygon && loopOuterPolygon.length >= 3) {
+                        // IRREGULAR: Draw along polygon edges
+                        drawFireLaneAlongPolygon(loopOuterPolygon);
+                        if (!parkingAreaTooSmall && loopInnerPolygon && loopInnerPolygon.length >= 3) {
+                            drawFireLaneAlongPolygon(loopInnerPolygon);
+                        }
+                    } else {
+                        // RECTANGULAR: Original rectangle-based fire lanes
+                        // Outer perimeter (at edge of loop)
+                        createFireLine(loopOX + loopTotalW / 2, loopOZ + lineW / 2, loopTotalW, lineW);
+                        createFireLine(loopOX + loopTotalW / 2, loopOZ + loopTotalD - lineW / 2, loopTotalW, lineW);
+                        createFireLine(loopOX + lineW / 2, loopOZ + loopTotalD / 2, lineW, loopTotalD);
+                        createFireLine(loopOX + loopTotalW - lineW / 2, loopOZ + loopTotalD / 2, lineW, loopTotalD);
+
+                        // Inner perimeter (around parking bays) - only if interior is valid
+                        if (!parkingAreaTooSmall && interiorW > 0 && interiorD > 0) {
+                            createFireLine(interiorX + interiorW / 2, interiorZ + lineW / 2, interiorW, lineW);
+                            createFireLine(interiorX + interiorW / 2, interiorZ + interiorD - lineW / 2, interiorW, lineW);
+                            createFireLine(interiorX + lineW / 2, interiorZ + interiorD / 2, lineW, interiorD);
+                            createFireLine(interiorX + interiorW - lineW / 2, interiorZ + interiorD / 2, lineW, interiorD);
+                        }
+                    }
+                }
+
+                // ============================================================
+                // 3b. DIRECTION ARROWS (One-way vs Two-way traffic flow)
+                // Shows traffic direction on perimeter loop and drive aisles
+                // ============================================================
+                const arrowY = 0.10; // Above aisles (0.08), below stalls (0.12)
+                const arrowColor = 0xffffff; // White arrows for better visibility
+                const arrowMaterial = new THREE.MeshBasicMaterial({
+                    color: arrowColor,
+                    transparent: true,
+                    opacity: 0.7,
+                    polygonOffset: true,
+                    polygonOffsetFactor: -3,
+                    polygonOffsetUnits: -3,
+                    depthWrite: false
+                });
+
+                // Helper to create a direction arrow shape
+                const createDirectionArrow = (x, z, rotation, scale = 1) => {
+                    // Arrow shape pointing right (→)
+                    const arrowShape = new THREE.Shape();
+                    arrowShape.moveTo(4 * scale, 0);
+                    arrowShape.lineTo(0, 2 * scale);
+                    arrowShape.lineTo(0, 0.8 * scale);
+                    arrowShape.lineTo(-4 * scale, 0.8 * scale);
+                    arrowShape.lineTo(-4 * scale, -0.8 * scale);
+                    arrowShape.lineTo(0, -0.8 * scale);
+                    arrowShape.lineTo(0, -2 * scale);
+                    arrowShape.closePath();
+
+                    const arrowGeo = new THREE.ShapeGeometry(arrowShape);
+                    arrowGeo.rotateX(-Math.PI / 2);
+                    arrowGeo.rotateY(rotation);
+                    const arrowMesh = new THREE.Mesh(arrowGeo, arrowMaterial);
+                    arrowMesh.position.set(x - centerX, arrowY, centerY - z);
+                    return arrowMesh;
+                };
+
+                // PERIMETER LOOP ARROWS
+                // Counter-clockwise flow for one-way: Top→, Right↓, Bottom←, Left↑
+                // Bidirectional for two-way with dashed center line
+
+                // Helper to compute polygon winding direction (same as offsetPolygon uses)
+                const getWindingSign3D = (poly) => {
+                    if (!poly || poly.length < 3) return 1;
+                    let signedArea = 0;
+                    for (let i = 0; i < poly.length; i++) {
+                        const curr = poly[i];
+                        const next = poly[(i + 1) % poly.length];
+                        signedArea += (next.x - curr.x) * (next.y + curr.y);
+                    }
+                    return signedArea > 0 ? 1 : -1;
+                };
+
+                // Helper to compute polygon centroid (for lamp pole placement)
+                const getPolygonCentroid3D = (poly) => {
+                    if (!poly || poly.length === 0) return { x: 0, y: 0 };
+                    let sx = 0, sy = 0;
+                    for (const p of poly) {
+                        sx += p.x;
+                        sy += p.y;
+                    }
+                    return { x: sx / poly.length, y: sy / poly.length };
+                };
+
+                // Helper to draw arrows along polygon edges
+                // Uses winding direction to determine correct inward perpendicular
+                const drawArrowsAlongPolygonEdge3D = (polygon, inwardOffset, isTwoWay, laneOff) => {
+                    if (!polygon || polygon.length < 3) return;
+                    const arrowSpacing = 60; // MUTCD standard
+                    const windingSign = getWindingSign3D(polygon);
+
+                    for (let i = 0; i < polygon.length; i++) {
+                        const p1 = polygon[i];
+                        const p2 = polygon[(i + 1) % polygon.length];
+                        const dx = p2.x - p1.x;
+                        const dy = p2.y - p1.y; // Note: polygon uses y, 3D uses z
+                        const edgeLen = Math.sqrt(dx * dx + dy * dy);
+                        if (edgeLen < 20) continue; // Skip short edges
+
+                        // Unit vectors along edge
+                        const ux = dx / edgeLen;
+                        const uy = dy / edgeLen;
+
+                        // Inward perpendicular based on winding (same as offsetPolygon)
+                        const nx = windingSign * uy;
+                        const ny = windingSign * -ux;
+
+                        // Edge direction angle for 3D rotation
+                        const edgeAngle = Math.atan2(dy, dx);
+
+                        // Number of arrows
+                        const numArrows = Math.max(1, Math.floor(edgeLen / arrowSpacing));
+                        const spacing = edgeLen / (numArrows + 1);
+
+                        for (let a = 1; a <= numArrows; a++) {
+                            const t = a * spacing;
+                            const ax = p1.x + ux * t + nx * inwardOffset;
+                            const az = p1.y + uy * t + ny * inwardOffset; // y in polygon → z in 3D
+
+                            if (isTwoWay) {
+                                // Two lanes - offset from center using inward perpendicular
+                                const ax1 = ax - nx * laneOff;
+                                const az1 = az - ny * laneOff;
+                                const ax2 = ax + nx * laneOff;
+                                const az2 = az + ny * laneOff;
+                                buildingsGroup.add(createDirectionArrow(ax1, az1, -edgeAngle, 1)); // Forward
+                                buildingsGroup.add(createDirectionArrow(ax2, az2, -edgeAngle + Math.PI, 1)); // Reverse
+                            } else {
+                                // One-way counter-clockwise
+                                buildingsGroup.add(createDirectionArrow(ax, az, -edgeAngle, 1.2));
+                            }
+                        }
+                    }
+                };
+
+                // Helper to draw dashed centerlines along polygon edges
+                // Uses winding direction to determine correct inward perpendicular
+                const drawCenterlineAlongPolygon3D = (polygon, inwardOffset) => {
+                    if (!polygon || polygon.length < 3) return;
+                    const dashLength = 8;
+                    const gapLength = 6;
+                    const lineWidth = 0.5;
+                    const centerLineY = 0.06;
+                    const windingSign = getWindingSign3D(polygon);
+                    const lineMat = new THREE.MeshBasicMaterial({
+                        color: 0xffffff,
+                        transparent: true,
+                        opacity: 0.6,
+                        side: THREE.DoubleSide,
+                        polygonOffset: true,
+                        polygonOffsetFactor: -4,
+                        polygonOffsetUnits: -4,
+                        depthWrite: false
+                    });
+
+                    for (let i = 0; i < polygon.length; i++) {
+                        const p1 = polygon[i];
+                        const p2 = polygon[(i + 1) % polygon.length];
+                        const dx = p2.x - p1.x;
+                        const dy = p2.y - p1.y;
+                        const edgeLen = Math.sqrt(dx * dx + dy * dy);
+                        if (edgeLen < 20) continue;
+
+                        const ux = dx / edgeLen;
+                        const uy = dy / edgeLen;
+
+                        // Inward perpendicular based on winding
+                        const nx = windingSign * uy;
+                        const ny = windingSign * -ux;
+
+                        const angle = Math.atan2(dy, dx);
+
+                        // Start and end points offset inward, with 10ft margin from corners
+                        const margin = 10;
+                        const x1 = p1.x + ux * margin + nx * inwardOffset;
+                        const z1 = p1.y + uy * margin + ny * inwardOffset;
+
+                        const lineLen = edgeLen - 2 * margin;
+                        const numDashes = Math.floor(lineLen / (dashLength + gapLength));
+                        for (let d = 0; d < numDashes; d++) {
+                            const startDist = d * (dashLength + gapLength);
+                            if (startDist + dashLength > lineLen) continue;
+                            const dashX = x1 + ux * (startDist + dashLength / 2);
+                            const dashZ = z1 + uy * (startDist + dashLength / 2);
+
+                            const dashGeo = new THREE.PlaneGeometry(dashLength, lineWidth);
+                            dashGeo.rotateX(-Math.PI / 2);
+                            dashGeo.rotateY(-angle);
+                            const dashMesh = new THREE.Mesh(dashGeo, lineMat);
+                            dashMesh.position.set(dashX - centerX, centerLineY, centerY - dashZ);
+                            buildingsGroup.add(dashMesh);
+                        }
+                    }
+                };
+
+                const laneOffset = loopWidth / 4; // For two-way offset from center
+
+                if (isIrregular && loopOuterPolygon && loopOuterPolygon.length >= 3) {
+                    // IRREGULAR POLYGON: Draw arrows and centerlines along polygon edges
+                    drawArrowsAlongPolygonEdge3D(loopOuterPolygon, loopWidth / 2, driveType === 'twoWay', laneOffset);
+
+                    if (driveType === 'twoWay') {
+                        drawCenterlineAlongPolygon3D(loopOuterPolygon, loopWidth / 2);
+                    }
+                } else {
+                    // RECTANGULAR: Use original rectangular logic
+                    const loopCenterTop = loopOZ + loopWidth / 2;
+                    const loopCenterBottom = loopOZ + loopTotalD - loopWidth / 2;
+                    const loopCenterLeft = loopOX + loopWidth / 2;
+                    const loopCenterRight = loopOX + loopTotalW - loopWidth / 2;
+
+                    // Add arrows along each edge of perimeter loop (MUTCD spacing: 60ft)
+                    const loopArrowSpacing = 60;
+                    const topArrowCount = Math.max(1, Math.floor((loopTotalW - loopWidth * 2) / loopArrowSpacing));
+                    const sideArrowCount = Math.max(1, Math.floor((loopTotalD - loopWidth * 2) / loopArrowSpacing));
+
+                    if (driveType === 'twoWay') {
+                        // TWO-WAY: Bidirectional arrows on each edge + dashed center line
+                        // Top edge: both directions
+                        for (let i = 0; i < topArrowCount; i++) {
+                            const arrowX = loopOX + loopWidth + (i + 0.5) * (loopTotalW - loopWidth * 2) / topArrowCount;
+                            buildingsGroup.add(createDirectionArrow(arrowX, loopCenterTop - laneOffset, 0, 1)); // →
+                            buildingsGroup.add(createDirectionArrow(arrowX, loopCenterTop + laneOffset, Math.PI, 1)); // ←
+                        }
+                        // Bottom edge: both directions
+                        for (let i = 0; i < topArrowCount; i++) {
+                            const arrowX = loopOX + loopWidth + (i + 0.5) * (loopTotalW - loopWidth * 2) / topArrowCount;
+                            buildingsGroup.add(createDirectionArrow(arrowX, loopCenterBottom - laneOffset, Math.PI, 1)); // ←
+                            buildingsGroup.add(createDirectionArrow(arrowX, loopCenterBottom + laneOffset, 0, 1)); // →
+                        }
+                        // Right edge: both directions
+                        for (let i = 0; i < sideArrowCount; i++) {
+                            const arrowZ = loopOZ + loopWidth + (i + 0.5) * (loopTotalD - loopWidth * 2) / sideArrowCount;
+                            buildingsGroup.add(createDirectionArrow(loopCenterRight - laneOffset, arrowZ, -Math.PI / 2, 1)); // ↓
+                            buildingsGroup.add(createDirectionArrow(loopCenterRight + laneOffset, arrowZ, Math.PI / 2, 1)); // ↑
+                        }
+                        // Left edge: both directions
+                        for (let i = 0; i < sideArrowCount; i++) {
+                            const arrowZ = loopOZ + loopWidth + (i + 0.5) * (loopTotalD - loopWidth * 2) / sideArrowCount;
+                            buildingsGroup.add(createDirectionArrow(loopCenterLeft - laneOffset, arrowZ, Math.PI / 2, 1)); // ↑
+                            buildingsGroup.add(createDirectionArrow(loopCenterLeft + laneOffset, arrowZ, -Math.PI / 2, 1)); // ↓
+                        }
+
+                        // Dashed center lines for two-way perimeter (paint-style planes to avoid z-fighting)
+                        const centerLineY = 0.06; // Just above loop surface (0.03), below aisles (0.08)
+                        const dashLength = 8;
+                        const gapLength = 6;
+                        const lineWidth = 0.5; // Paint stripe width
+                        const lineMat = new THREE.MeshBasicMaterial({
+                            color: 0xffffff,
+                            transparent: true,
+                            opacity: 0.6,
+                            side: THREE.DoubleSide,
+                            polygonOffset: true,
+                            polygonOffsetFactor: -4,
+                            polygonOffsetUnits: -4,
+                            depthWrite: false
+                        });
+
+                        const createDashedPaintLine = (x1, z1, x2, z2) => {
+                            const dx = x2 - x1;
+                            const dz = z2 - z1;
+                            const length = Math.sqrt(dx * dx + dz * dz);
+                            const angle = Math.atan2(dz, dx);
+                            const numDashes = Math.floor(length / (dashLength + gapLength));
+                            const group = new THREE.Group();
+
+                            for (let i = 0; i < numDashes; i++) {
+                                const startDist = i * (dashLength + gapLength);
+                                const dashX = x1 + (dx / length) * (startDist + dashLength / 2);
+                                const dashZ = z1 + (dz / length) * (startDist + dashLength / 2);
+
+                                const dashGeo = new THREE.PlaneGeometry(dashLength, lineWidth);
+                                dashGeo.rotateX(-Math.PI / 2);
+                                dashGeo.rotateY(-angle);
+                                const dashMesh = new THREE.Mesh(dashGeo, lineMat);
+                                dashMesh.position.set(dashX - centerX, centerLineY, centerY - dashZ);
+                                group.add(dashMesh);
+                            }
+                            return group;
+                        };
+
+                        // Center lines on all 4 edges
+                        buildingsGroup.add(createDashedPaintLine(loopOX + loopWidth + 10, loopCenterTop, loopOX + loopTotalW - loopWidth - 10, loopCenterTop));
+                        buildingsGroup.add(createDashedPaintLine(loopOX + loopWidth + 10, loopCenterBottom, loopOX + loopTotalW - loopWidth - 10, loopCenterBottom));
+                        buildingsGroup.add(createDashedPaintLine(loopCenterLeft, loopOZ + loopWidth + 10, loopCenterLeft, loopOZ + loopTotalD - loopWidth - 10));
+                        buildingsGroup.add(createDashedPaintLine(loopCenterRight, loopOZ + loopWidth + 10, loopCenterRight, loopOZ + loopTotalD - loopWidth - 10));
+                    } else {
+                        // ONE-WAY: Counter-clockwise circulation (per MUTCD)
+                        // Top edge: → (right)
+                        for (let i = 0; i < topArrowCount; i++) {
+                            const arrowX = loopOX + loopWidth + (i + 0.5) * (loopTotalW - loopWidth * 2) / topArrowCount;
+                            buildingsGroup.add(createDirectionArrow(arrowX, loopCenterTop, 0, 1.2));
+                        }
+                        // Right edge: ↓ (down)
+                        for (let i = 0; i < sideArrowCount; i++) {
+                            const arrowZ = loopOZ + loopWidth + (i + 0.5) * (loopTotalD - loopWidth * 2) / sideArrowCount;
+                            buildingsGroup.add(createDirectionArrow(loopCenterRight, arrowZ, -Math.PI / 2, 1.2));
+                        }
+                        // Bottom edge: ← (left)
+                        for (let i = 0; i < topArrowCount; i++) {
+                            const arrowX = loopOX + loopWidth + (i + 0.5) * (loopTotalW - loopWidth * 2) / topArrowCount;
+                            buildingsGroup.add(createDirectionArrow(arrowX, loopCenterBottom, Math.PI, 1.2));
+                        }
+                        // Left edge: ↑ (up)
+                        for (let i = 0; i < sideArrowCount; i++) {
+                            const arrowZ = loopOZ + loopWidth + (i + 0.5) * (loopTotalD - loopWidth * 2) / sideArrowCount;
+                            buildingsGroup.add(createDirectionArrow(loopCenterLeft, arrowZ, Math.PI / 2, 1.2));
+                        }
+                    }
+                }
+
+                // ============================================================
+                // 4. STALL TYPE DISTRIBUTION (ADA, EV, Compact, Standard)
+                // SYNCED WITH 2D: Uses same calculation method as SiteGen.jsx
+                // ============================================================
+                const interiorDoubleLoadedStalls = stallsPerRow * 2 * numModules;
+                const totalPossibleStalls = interiorDoubleLoadedStalls;
+                const adaStalls = Math.max(1, Math.ceil(totalPossibleStalls * adaPct / 100));
+                const evStalls = Math.ceil(totalPossibleStalls * evPct / 100);
+                const compactStalls = Math.ceil(totalPossibleStalls * compactPct / 100);
+
+                // Helper to get stall type and color (synced with 2D naming)
+                const getStallInfo = (index) => {
+                    if (index < adaStalls) {
+                        return { color: adaColor, type: 'ada' };
+                    } else if (index < adaStalls + evStalls) {
+                        return { color: evColor, type: 'ev' };
+                    } else if (index < adaStalls + evStalls + compactStalls) {
+                        return { color: compactColor, type: 'compact' };
+                    }
+                    return { color: standardColor, type: 'standard' };
+                };
+
+                // ============================================================
+                // HELPER: Create angled stall geometry (parallelogram for 45°/60°)
+                // For angled parking, stalls are parallelograms not rectangles
+                // The "lean" = stallWidth × cos(angle) - horizontal shift from front to back
+                // ============================================================
+                const createAngledStallShape = (moduleWidth, depthProjection, angle, originalStallWidth = 9, inset = 0.3, isTopRow = true) => {
+                    // Angle in radians
+                    const angleRad = (angle * Math.PI) / 180;
+                    // Lean is based on stall width, not depth (ITE formula)
+                    const lean = originalStallWidth * Math.cos(angleRad);
+
+                    // Create parallelogram shape with inset for visual padding
+                    const shape = new THREE.Shape();
+                    const w = moduleWidth - inset * 2;
+                    const d = depthProjection - inset * 2;
+                    const leanInset = lean * (d / depthProjection);  // Scale lean to match inset depth
+
+                    // Parallelogram corners (counterclockwise from bottom-left)
+                    // Front edge at bottom (y=inset), back edge at top (y=d+inset)
+                    // For proper herringbone pattern:
+                    // - Top row: back edge shifts LEFT (negative direction) - lean LEFT
+                    // - Bottom row: back edge shifts RIGHT (positive direction) - lean RIGHT
+                    if (isTopRow) {
+                        // Top row: back edge shifts LEFT
+                        shape.moveTo(inset, inset);                              // Front-left
+                        shape.lineTo(w + inset, inset);                          // Front-right
+                        shape.lineTo(w + inset - leanInset, d + inset);          // Back-right (leaned LEFT)
+                        shape.lineTo(inset - leanInset, d + inset);              // Back-left (leaned LEFT)
+                    } else {
+                        // Bottom row: back edge shifts RIGHT
+                        shape.moveTo(inset, inset);                              // Front-left
+                        shape.lineTo(w + inset, inset);                          // Front-right
+                        shape.lineTo(w + inset + leanInset, d + inset);          // Back-right (leaned RIGHT)
+                        shape.lineTo(inset + leanInset, d + inset);              // Back-left (leaned RIGHT)
+                    }
+                    shape.closePath();
+
+                    return shape;
+                };
+
+                // Helper: Get angled stall corners for polygon validation
+                const getAngledStallCorners3D = (stallX, stallZ, moduleWidth, depthProjection, angle, originalStallWidth = 9, isTopRow = true) => {
+                    const angleRad = (angle * Math.PI) / 180;
+                    const lean = originalStallWidth * Math.cos(angleRad);
+
+                    // For proper herringbone pattern:
+                    // - Top row: back edge shifts LEFT (negative X)
+                    // - Bottom row: back edge shifts RIGHT (positive X)
+                    if (isTopRow) {
+                        // Top row: back edge shifts LEFT by lean
+                        return [
+                            { x: stallX, y: stallZ },                                    // Front-left
+                            { x: stallX + moduleWidth, y: stallZ },                      // Front-right
+                            { x: stallX + moduleWidth - lean, y: stallZ + depthProjection },  // Back-right
+                            { x: stallX - lean, y: stallZ + depthProjection }            // Back-left
+                        ];
+                    } else {
+                        // Bottom row: back edge shifts RIGHT by lean
+                        return [
+                            { x: stallX, y: stallZ },                                    // Front-left
+                            { x: stallX + moduleWidth, y: stallZ },                      // Front-right
+                            { x: stallX + moduleWidth + lean, y: stallZ + depthProjection },  // Back-right
+                            { x: stallX + lean, y: stallZ + depthProjection }            // Back-left
+                        ];
+                    }
+                };
+
+                // Helper: Check if angled stall is inside polygon
+                const isAngledStallInPolygon3D = (corners, polygon) => {
+                    if (!polygon || polygon.length < 3) return true;
+                    return corners.every(corner => isPointInPolygon(corner, polygon));
+                };
+
+                // Helper: Get center of angled stall
+                const getAngledStallCenter3D = (corners) => {
+                    const centerX = (corners[0].x + corners[2].x) / 2;
+                    const centerY = (corners[0].y + corners[2].y) / 2;
+                    return { x: centerX, y: centerY };
+                };
+
+                // ============================================================
+                // 5. DRAW PARKING MODULES (Double-loaded bays)
+                // Clear Y-height layering with good separation to avoid z-fighting:
+                // Loop: 0.01, Interior: 0.03, Aisles: 0.05, Stalls: 0.10, Stripes: 0.15, Crosswalks: 0.20
+                // ============================================================
+
+                // NOTE: Removed interiorFloorMat - it was causing z-fighting with aisles.
+                // The aisles and stalls fully cover the interior area.
+
+                let stallIndex = 0;
+                // === LAYER HEIGHTS (properly stacked to avoid z-fighting) ===
+                // Using larger spacing between layers for clean rendering on all GPUs
+                // Paint-like layers: each layer sits visibly on top of the previous
+                const aisleY = 0.08;     // Drive aisles above interior floor (0.05)
+                const stallY = 0.12;     // Stall fills above aisles  
+                const stripeY = 0.16;    // Stripes on top of stalls
+                const crosswalkY = 0.20; // Crosswalks above stripes
+                const stripeWidth = 0.5; // Slightly wider for visibility
+
+                // Collect all stalls for car placement later
+                const allStalls = [];
+
+                for (let m = 0; m < numModules; m++) {
+                    const moduleStartZ = interiorZ + m * moduleDepth;
+
+                    // Drive aisle in center of module (uses effectiveAisleWidth)
+                    const aisleZ = moduleStartZ + stallDepth;
+
+                    // For irregular shapes, polygon clipping is done in the X-scan below
+                    // No need for center-point pre-check - it fails for L/U shaped polygons
+
+                    // For irregular shapes, clip aisle to polygon bounds
+                    // Default to single segment spanning full width
+                    let aisleSegments = [{ startX: interiorX, endX: interiorX + interiorW }];
+
+                    if (isIrregular && loopInnerPolygon && loopInnerPolygon.length >= 3) {
+                        // Find all valid X segments where the aisle intersects the polygon
+                        // Need to detect DISCONTINUOUS segments (gaps in L/U shapes)
+                        // IMPORTANT: For double-loaded parking, aisle only valid where BOTH
+                        // top row AND bottom row stalls would be inside the polygon
+                        const topRowCenterZ = moduleStartZ + stallDepth / 2;  // Top stall row center
+                        const bottomRowCenterZ = aisleZ + effectiveAisleWidth + stallDepth / 2;  // Bottom stall row center
+
+                        const segments = [];
+                        let segmentStart = null;
+                        let lastValid = false;
+
+                        // Must be inside BOTH inner polygon AND outer polygon (handles offset algorithm edge cases)
+                        for (let testX = interiorX; testX <= interiorX + interiorW; testX += 2) {
+                            // Check if BOTH top and bottom stall rows are inside polygon at this X
+                            const topPoint = { x: testX, y: topRowCenterZ };
+                            const bottomPoint = { x: testX, y: bottomRowCenterZ };
+
+                            const topInInner = isPointInPolygon(topPoint, loopInnerPolygon);
+                            const topInOuter = loopOuterPolygon ? isPointInPolygon(topPoint, loopOuterPolygon) : true;
+                            const bottomInInner = isPointInPolygon(bottomPoint, loopInnerPolygon);
+                            const bottomInOuter = loopOuterPolygon ? isPointInPolygon(bottomPoint, loopOuterPolygon) : true;
+
+                            // Aisle only valid where BOTH rows would have stalls
+                            const isValid = topInInner && topInOuter && bottomInInner && bottomInOuter;
+
+                            if (isValid && !lastValid) {
+                                // Starting a new segment
+                                segmentStart = testX;
+                            } else if (!isValid && lastValid && segmentStart !== null) {
+                                // Ending a segment
+                                segments.push({ startX: segmentStart, endX: testX - 2 });
+                                segmentStart = null;
+                            }
+                            lastValid = isValid;
+                        }
+
+                        // Close final segment if still open
+                        if (lastValid && segmentStart !== null) {
+                            segments.push({ startX: segmentStart, endX: interiorX + interiorW });
+                        }
+
+                        if (segments.length === 0) {
+                            // Aisle doesn't intersect polygon at this Z, skip this module
+                            continue;
+                        }
+
+                        aisleSegments = segments;
+                    }
+
+                    // Draw each aisle segment separately (handles L/U shape gaps)
+                    aisleSegments.forEach(segment => {
+                        const segmentWidth = segment.endX - segment.startX;
+                        if (segmentWidth <= 0) return;
+
+                        const aisleCenterX = segment.startX + segmentWidth / 2;
+                        const aisleGeo = new THREE.PlaneGeometry(segmentWidth, effectiveAisleWidth);
+                        aisleGeo.rotateX(-Math.PI / 2);
+                        const aisleMesh = new THREE.Mesh(aisleGeo, driveMat);
+                        aisleMesh.position.set(
+                            aisleCenterX - centerX,
+                            aisleY,
+                            centerY - (aisleZ + effectiveAisleWidth / 2)
+                        );
+                        buildingsGroup.add(aisleMesh);
+                    });
+
+                    // Use first/last segments for backward compatibility with arrows/markers
+                    const aisleStartX = aisleSegments[0]?.startX || interiorX;
+                    const aisleEndX = aisleSegments[aisleSegments.length - 1]?.endX || (interiorX + interiorW);
+                    const clippedAisleW = aisleEndX - aisleStartX;
+
+                    // DIRECTION ARROWS ON DRIVE AISLES
+                    const aisleArrowSpacing = 60; // MUTCD spacing: 60ft
+                    const aisleArrowCount = Math.max(1, Math.floor(clippedAisleW / aisleArrowSpacing));
+                    const aisleCenterZ = aisleZ + effectiveAisleWidth / 2;
+
+                    if (driveType === 'twoWay') {
+                        // Two-way: dashed white centerline only (per MUTCD - no arrows needed)
+                        // Paint-style planes to avoid z-fighting
+                        const aisleCenterLineY = 0.11; // Above aisles (0.08), with arrows (0.10)
+                        const aisleDashLength = 6;
+                        const aisleGapLength = 4;
+                        const aisleLineWidth = 0.5;
+                        const aisleCenterLineMat = new THREE.MeshBasicMaterial({
+                            color: 0xffffff,
+                            transparent: true,
+                            opacity: 0.5,
+                            side: THREE.DoubleSide,
+                            polygonOffset: true,
+                            polygonOffsetFactor: -4,
+                            polygonOffsetUnits: -4,
+                            depthWrite: false
+                        });
+
+                        // Create dashed line along aisle center (using clipped aisle bounds)
+                        const aisleLength = clippedAisleW - 20; // Leave 10ft on each end
+                        const numAisleDashes = Math.floor(aisleLength / (aisleDashLength + aisleGapLength));
+
+                        for (let d = 0; d < numAisleDashes; d++) {
+                            const startDist = d * (aisleDashLength + aisleGapLength);
+                            const dashX = aisleStartX + 10 + startDist + aisleDashLength / 2;
+
+                            const dashGeo = new THREE.PlaneGeometry(aisleDashLength, aisleLineWidth);
+                            dashGeo.rotateX(-Math.PI / 2);
+                            const dashMesh = new THREE.Mesh(dashGeo, aisleCenterLineMat);
+                            dashMesh.position.set(dashX - centerX, aisleCenterLineY, centerY - aisleCenterZ);
+                            buildingsGroup.add(dashMesh);
+                        }
+                    } else {
+                        // One-way / Hybrid: single centered arrow, alternating direction per row
+                        // Even rows → (right), Odd rows ← (left) - matches 2D view
+                        const direction = m % 2 === 0 ? 0 : Math.PI;
+                        for (let a = 0; a < aisleArrowCount; a++) {
+                            const arrowX = aisleStartX + (a + 0.5) * clippedAisleW / aisleArrowCount;
+                            buildingsGroup.add(createDirectionArrow(arrowX, aisleCenterZ, direction, 1));
+                        }
+                    }
+
+                    // Draw both rows of stalls (top row and bottom row)
+                    for (let row = 0; row < 2; row++) {
+                        const rowZ = row === 0 ? moduleStartZ : aisleZ + effectiveAisleWidth;
+                        const isTopRow = (row === 0);
+
+                        // Calculate lean for angled parking
+                        const lean = isAngledParking ? stallWidth * Math.cos((parkingAngle * Math.PI) / 180) : 0;
+
+                        for (let s = 0; s < stallsPerRow; s++) {
+                            // For angled parking, use effectiveStallModuleWidth for spacing
+                            const stallSpacing = isAngledParking ? effectiveStallModuleWidth : stallWidth;
+
+                            // For angled parking, offset first stall to account for lean
+                            // Top rows lean LEFT: start with +lean offset so back-left corner stays in bounds
+                            const leanOffset = isAngledParking && isTopRow ? lean : 0;
+                            const stallX = interiorX + leanOffset + s * stallSpacing;
+
+                            // Determine actual stall dimensions for this stall
+                            const actualStallDepth = isAngledParking ? effectiveStallDepth : stallDepth;
+
+                            // For irregular shapes, check if stall is inside the interior polygon
+                            // Use stricter validation: center in both polygons AND all corners in inner
+                            if (isIrregular && loopInnerPolygon && loopInnerPolygon.length >= 3) {
+                                if (isAngledParking) {
+                                    // For angled parking, check parallelogram corners
+                                    const stallCorners = getAngledStallCorners3D(stallX, rowZ, stallSpacing, actualStallDepth, parkingAngle, stallWidth, isTopRow);
+                                    const center = getAngledStallCenter3D(stallCorners);
+
+                                    const centerInInner = isPointInPolygon(center, loopInnerPolygon);
+                                    const centerInOuter = loopOuterPolygon ? isPointInPolygon(center, loopOuterPolygon) : true;
+                                    const cornersInInner = isAngledStallInPolygon3D(stallCorners, loopInnerPolygon);
+
+                                    if (!centerInInner || !centerInOuter || !cornersInInner) {
+                                        continue; // Skip stall - outside polygon boundary
+                                    }
+                                } else {
+                                    // Original rectangular stall validation
+                                    const stallCenterX = stallX + stallWidth / 2;
+                                    const stallCenterZ = rowZ + stallDepth / 2;
+                                    const centerPoint = { x: stallCenterX, y: stallCenterZ };
+
+                                    // Center must be inside inner polygon
+                                    const centerInInner = isPointInPolygon(centerPoint, loopInnerPolygon);
+                                    // Center must be inside outer polygon (handles offset issues at reflex corners)
+                                    const centerInOuter = loopOuterPolygon ? isPointInPolygon(centerPoint, loopOuterPolygon) : true;
+                                    // All corners must be inside inner polygon
+                                    const cornersInInner = isRectInPolygon(stallX, rowZ, stallWidth, stallDepth, loopInnerPolygon);
+
+                                    if (!centerInInner || !centerInOuter || !cornersInInner) {
+                                        continue; // Skip stall - outside polygon boundary
+                                    }
+                                }
+                            } else {
+                                // Rectangular lot bounds check - account for angled stall parallelogram corners
+                                if (isAngledParking) {
+                                    const stallCorners = getAngledStallCorners3D(stallX, rowZ, stallSpacing, actualStallDepth, parkingAngle, stallWidth, isTopRow);
+                                    // Check all 4 parallelogram corners are within interior bounds
+                                    const allCornersInBounds = stallCorners.every(corner =>
+                                        corner.x >= interiorX &&
+                                        corner.x <= interiorX + interiorW &&
+                                        corner.y >= interiorZ &&
+                                        corner.y <= interiorZ + interiorH
+                                    );
+                                    if (!allCornersInBounds) {
+                                        continue; // Skip this stall - parallelogram extends outside interior
+                                    }
+                                }
+                            }
+
+                            // SYNC with 2D: Skip stall positions that become landscape islands
+                            // Landscape islands only in middle positions, not at edges
+                            const isLandscape = hasLandscaping && s > 0 && s < stallsPerRow - 1 && s % landscapeInterval === 0;
+                            if (isLandscape) {
+                                continue; // Skip - this position is a landscape island
+                            }
+
+                            const info = getStallInfo(stallIndex);
+
+                            // Add stall to allStalls array for car placement
+                            allStalls.push({
+                                x: stallX,
+                                y: rowZ,
+                                width: stallSpacing,
+                                height: actualStallDepth,
+                                row: row,
+                                type: info.type,
+                                angle: parkingAngle  // Include angle for car orientation
+                            });
+
+                            // Stall fill (colored shape - parallelogram for angled, rectangle for perpendicular)
+                            const fillMat = new THREE.MeshStandardMaterial({
+                                color: info.color,
+                                roughness: 0.5,
+                                metalness: 0.1
+                            });
+
+                            if (isAngledParking) {
+                                // Angled parking: create parallelogram shape
+                                // Use the correct lean calculation: lean = stallWidth × cos(angle)
+                                const isTopRow = (row === 0);
+                                const stallShape = createAngledStallShape(stallSpacing, actualStallDepth, parkingAngle, stallWidth, 0.3, isTopRow);
+                                const fillGeo = new THREE.ShapeGeometry(stallShape);
+                                fillGeo.rotateX(-Math.PI / 2);
+                                const fillMesh = new THREE.Mesh(fillGeo, fillMat);
+
+                                // Position based on row - account for lean direction
+                                const angleRad = (parkingAngle * Math.PI) / 180;
+                                const lean = stallWidth * Math.cos(angleRad);
+
+                                if (isTopRow) {
+                                    // Top row: stall leans left (back edge to the left)
+                                    fillMesh.position.set(
+                                        stallX - centerX,
+                                        stallY,
+                                        centerY - rowZ
+                                    );
+                                } else {
+                                    // Bottom row: stall leans right (back edge to the right)
+                                    // Flip the shape by rotating around its center
+                                    fillMesh.position.set(
+                                        stallX - centerX,
+                                        stallY,
+                                        centerY - rowZ - actualStallDepth
+                                    );
+                                    fillMesh.rotation.z = Math.PI;  // Flip to mirror the lean
+                                }
+                                buildingsGroup.add(fillMesh);
+
+                                // Draw angled stripe lines for parallelogram stall
+                                // Left angled stripe
+                                const leftStripeShape = new THREE.Shape();
+                                if (isTopRow) {
+                                    leftStripeShape.moveTo(0, 0);
+                                    leftStripeShape.lineTo(stripeWidth, 0);
+                                    leftStripeShape.lineTo(stripeWidth + lean, actualStallDepth);
+                                    leftStripeShape.lineTo(lean, actualStallDepth);
+                                } else {
+                                    leftStripeShape.moveTo(0, 0);
+                                    leftStripeShape.lineTo(stripeWidth, 0);
+                                    leftStripeShape.lineTo(stripeWidth - lean, actualStallDepth);
+                                    leftStripeShape.lineTo(-lean, actualStallDepth);
+                                }
+                                leftStripeShape.closePath();
+                                const leftStripeGeo = new THREE.ShapeGeometry(leftStripeShape);
+                                leftStripeGeo.rotateX(-Math.PI / 2);
+                                const leftStripeMesh = new THREE.Mesh(leftStripeGeo, stripeMat);
+                                leftStripeMesh.position.set(stallX - centerX, stripeY, centerY - rowZ);
+                                buildingsGroup.add(leftStripeMesh);
+
+                                // Front T-line stripe (at aisle edge)
+                                const frontZ = row === 0 ? rowZ + actualStallDepth : rowZ;
+                                const frontStripeShape = new THREE.Shape();
+                                frontStripeShape.moveTo(0, 0);
+                                frontStripeShape.lineTo(stallSpacing, 0);
+                                frontStripeShape.lineTo(stallSpacing, stripeWidth);
+                                frontStripeShape.lineTo(0, stripeWidth);
+                                frontStripeShape.closePath();
+                                const frontStripeGeo = new THREE.ShapeGeometry(frontStripeShape);
+                                frontStripeGeo.rotateX(-Math.PI / 2);
+                                const frontStripeMesh = new THREE.Mesh(frontStripeGeo, stripeMat);
+                                frontStripeMesh.position.set(stallX - centerX, stripeY, centerY - frontZ);
+                                buildingsGroup.add(frontStripeMesh);
+
+                                // Right stripe for last stall in row
+                                if (s === stallsPerRow - 1) {
+                                    const rightStripeShape = new THREE.Shape();
+                                    if (isTopRow) {
+                                        rightStripeShape.moveTo(stallSpacing - stripeWidth, 0);
+                                        rightStripeShape.lineTo(stallSpacing, 0);
+                                        rightStripeShape.lineTo(stallSpacing + lean, actualStallDepth);
+                                        rightStripeShape.lineTo(stallSpacing - stripeWidth + lean, actualStallDepth);
+                                    } else {
+                                        rightStripeShape.moveTo(stallSpacing - stripeWidth, 0);
+                                        rightStripeShape.lineTo(stallSpacing, 0);
+                                        rightStripeShape.lineTo(stallSpacing - lean, actualStallDepth);
+                                        rightStripeShape.lineTo(stallSpacing - stripeWidth - lean, actualStallDepth);
+                                    }
+                                    rightStripeShape.closePath();
+                                    const rightStripeGeo = new THREE.ShapeGeometry(rightStripeShape);
+                                    rightStripeGeo.rotateX(-Math.PI / 2);
+                                    const rightStripeMesh = new THREE.Mesh(rightStripeGeo, stripeMat);
+                                    rightStripeMesh.position.set(stallX - centerX, stripeY, centerY - rowZ);
+                                    buildingsGroup.add(rightStripeMesh);
+                                }
+                            } else {
+                                // Perpendicular parking: original rectangle geometry
+                                const fillGeo = new THREE.PlaneGeometry(stallWidth - 0.6, stallDepth - 0.6);
+                                fillGeo.rotateX(-Math.PI / 2);
+                                const fillMesh = new THREE.Mesh(fillGeo, fillMat);
+                                fillMesh.position.set(
+                                    stallX + stallWidth / 2 - centerX,
+                                    stallY,
+                                    centerY - (rowZ + stallDepth / 2)
+                                );
+                                buildingsGroup.add(fillMesh);
+
+                                // White stripe on left side of stall
+                                const leftGeo = new THREE.PlaneGeometry(stripeWidth, stallDepth);
+                                leftGeo.rotateX(-Math.PI / 2);
+                                const leftMesh = new THREE.Mesh(leftGeo, stripeMat);
+                                leftMesh.position.set(
+                                    stallX + stripeWidth / 2 - centerX,
+                                    stripeY,
+                                    centerY - (rowZ + stallDepth / 2)
+                                );
+                                buildingsGroup.add(leftMesh);
+
+                                // White stripe at T-line (front of stall toward aisle)
+                                const frontZ = row === 0 ? rowZ + stallDepth : rowZ;
+                                const frontGeo = new THREE.PlaneGeometry(stallWidth, stripeWidth);
+                                frontGeo.rotateX(-Math.PI / 2);
+                                const frontMesh = new THREE.Mesh(frontGeo, stripeMat);
+                                frontMesh.position.set(
+                                    stallX + stallWidth / 2 - centerX,
+                                    stripeY,
+                                    centerY - frontZ
+                                );
+                                buildingsGroup.add(frontMesh);
+
+                                // Right stripe for last stall in row
+                                if (s === stallsPerRow - 1) {
+                                    const rightGeo = new THREE.PlaneGeometry(stripeWidth, stallDepth);
+                                    rightGeo.rotateX(-Math.PI / 2);
+                                    const rightMesh = new THREE.Mesh(rightGeo, stripeMat);
+                                    rightMesh.position.set(
+                                        stallX + stallWidth - stripeWidth / 2 - centerX,
+                                        stripeY,
+                                        centerY - (rowZ + stallDepth / 2)
+                                    );
+                                    buildingsGroup.add(rightMesh);
+                                }
+                            }
+
+                            // Add text labels for special stalls (like 2D view)
+                            if (info.type === 'ada' || info.type === 'ev' || info.type === 'compact') {
+                                let label = '';
+                                if (info.type === 'ada') label = '♿';  // Wheelchair symbol (International Symbol of Access)
+                                else if (info.type === 'ev') label = '⚡';  // Lightning bolt for EV
+                                else if (info.type === 'compact') label = 'C';
+
+                                const labelSprite = createIconSprite(label, 4);
+                                labelSprite.position.set(
+                                    stallX + stallWidth / 2 - centerX,
+                                    stripeY + 1.5,  // Float above stall
+                                    centerY - (rowZ + stallDepth / 2)
+                                );
+                                buildingsGroup.add(labelSprite);
+
+                                // Add blue ADA ground marking for accessible stalls
+                                if (info.type === 'ada') {
+                                    // Blue square background
+                                    const adaGroundMat = new THREE.MeshStandardMaterial({
+                                        color: 0x2563eb, // Blue
+                                        roughness: 0.5,
+                                        metalness: 0.1
+                                    });
+                                    const adaGroundGeo = new THREE.PlaneGeometry(stallWidth * 0.6, stallDepth * 0.4);
+                                    adaGroundGeo.rotateX(-Math.PI / 2);
+                                    const adaGroundMesh = new THREE.Mesh(adaGroundGeo, adaGroundMat);
+                                    adaGroundMesh.position.set(
+                                        stallX + stallWidth / 2 - centerX,
+                                        stallY + 0.01,
+                                        centerY - (rowZ + stallDepth / 2)
+                                    );
+                                    buildingsGroup.add(adaGroundMesh);
+
+                                    // White wheelchair symbol on blue background
+                                    const adaSymbol = createTextSprite('♿', 5, '#2563eb', '#ffffff');
+                                    adaSymbol.position.set(
+                                        stallX + stallWidth / 2 - centerX,
+                                        stallY + 0.05,
+                                        centerY - (rowZ + stallDepth / 2)
+                                    );
+                                    adaSymbol.scale.set(8, 8, 1);
+                                    buildingsGroup.add(adaSymbol);
+
+                                    // ADA access aisle stripes (diagonal hatching simulated with lines)
+                                    const accessAisleWidth = 5; // 5ft access aisle
+                                    const hatMat = new THREE.MeshBasicMaterial({ color: 0x3b82f6 });
+                                    // Diagonal stripes on the right side of ADA stall
+                                    for (let stripe = 0; stripe < 4; stripe++) {
+                                        const stripeGeo = new THREE.PlaneGeometry(0.5, stallDepth * 0.8);
+                                        stripeGeo.rotateX(-Math.PI / 2);
+                                        stripeGeo.rotateZ(Math.PI / 4); // Diagonal
+                                        const stripeMesh = new THREE.Mesh(stripeGeo, hatMat);
+                                        stripeMesh.position.set(
+                                            stallX + stallWidth - accessAisleWidth / 2 + stripe * 1.2 - centerX,
+                                            stripeY + 0.02,
+                                            centerY - (rowZ + stallDepth / 2)
+                                        );
+                                        buildingsGroup.add(stripeMesh);
+                                    }
+                                }
+                            }
+
+                            // Add stall number to each parking space (small text at rear of stall)
+                            // Format: A-001 for row A stall 1, B-001 for row B, etc.
+                            // Controlled by showStallNumbers config option
+                            if (showStallNumbers) {
+                                const rowLetter = String.fromCharCode(65 + (m * 2 + row)); // A, B, C, D...
+                                const stallNumber = String(s + 1).padStart(3, '0');
+                                const stallLabel = `${rowLetter}-${stallNumber}`;
+
+                                // Position number at rear of stall (away from aisle)
+                                const numberZ = row === 0 ? rowZ + 2 : rowZ + stallDepth - 2;
+                                const numberSprite = createTextSprite(stallLabel, 2, '#374151', '#f9fafb');
+                                numberSprite.position.set(
+                                    stallX + stallWidth / 2 - centerX,
+                                    stallY + 0.5,
+                                    centerY - numberZ
+                                );
+                                numberSprite.scale.set(4, 2, 1);
+                                buildingsGroup.add(numberSprite);
+                            }
+
+                            stallIndex++;
+                        }
+                    }
+                }
+
+                // ============================================================
+                // 4b. END ROW STALLS (single-loaded row when space remains)
+                // SYNCED with 2D view - draws additional row if remainingD allows
+                // ============================================================
+                if (endRowFits && remainingD >= stallDepth) {
+                    const endRowZ = interiorZ + numModules * moduleDepth;
+
+                    // For irregular shapes, check if end row center is inside polygon
+                    let drawEndRow = true;
+                    if (isIrregular && interiorPolygon && interiorPolygon.length >= 3) {
+                        const testX = (interiorX + interiorX + interiorW) / 2;
+                        if (!isPointInPolygon({ x: testX, y: endRowZ + stallDepth / 2 }, interiorPolygon)) {
+                            drawEndRow = false;
+                        }
+                    }
+
+                    if (drawEndRow) {
+                        for (let s = 0; s < stallsPerRow; s++) {
+                            const stallX = interiorX + s * stallWidth;
+
+                            // For irregular shapes, use stricter validation
+                            if (isIrregular && loopInnerPolygon && loopInnerPolygon.length >= 3) {
+                                const stallCenterX = stallX + stallWidth / 2;
+                                const stallCenterZ = endRowZ + stallDepth / 2;
+                                const centerPoint = { x: stallCenterX, y: stallCenterZ };
+
+                                const centerInInner = isPointInPolygon(centerPoint, loopInnerPolygon);
+                                const centerInOuter = loopOuterPolygon ? isPointInPolygon(centerPoint, loopOuterPolygon) : true;
+                                const cornersInInner = isRectInPolygon(stallX, endRowZ, stallWidth, stallDepth, loopInnerPolygon);
+
+                                if (!centerInInner || !centerInOuter || !cornersInInner) {
+                                    continue; // Skip stall - outside polygon boundary
+                                }
+                            }
+
+                            // Skip landscape islands
+                            if (hasLandscaping && s > 0 && s < stallsPerRow - 1 && s % landscapeInterval === 0) {
+                                continue;
+                            }
+
+                            // Determine stall type
+                            const info = getStallInfo(stallIndex);
+
+                            // End row stall fill
+                            const endStallMat = new THREE.MeshStandardMaterial({
+                                color: info.type === 'ada' ? adaColor :
+                                    info.type === 'ev' ? evColor :
+                                        info.type === 'compact' ? compactColor : standardColor,
+                                roughness: 0.7,
+                                metalness: 0.1
+                            });
+                            const endStallGeo = new THREE.PlaneGeometry(stallWidth - 0.5, stallDepth - 0.5);
+                            endStallGeo.rotateX(-Math.PI / 2);
+                            const endStallMesh = new THREE.Mesh(endStallGeo, endStallMat);
+                            endStallMesh.position.set(
+                                stallX + stallWidth / 2 - centerX,
+                                stallY,
+                                centerY - (endRowZ + stallDepth / 2)
+                            );
+                            buildingsGroup.add(endStallMesh);
+
+                            // Stall stripes
+                            const endStripeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+                            // Left stripe
+                            const endLeftGeo = new THREE.PlaneGeometry(stripeWidth, stallDepth);
+                            endLeftGeo.rotateX(-Math.PI / 2);
+                            const endLeftMesh = new THREE.Mesh(endLeftGeo, endStripeMat);
+                            endLeftMesh.position.set(
+                                stallX + stripeWidth / 2 - centerX,
+                                stripeY,
+                                centerY - (endRowZ + stallDepth / 2)
+                            );
+                            buildingsGroup.add(endLeftMesh);
+
+                            // Right stripe
+                            const endRightGeo = new THREE.PlaneGeometry(stripeWidth, stallDepth);
+                            endRightGeo.rotateX(-Math.PI / 2);
+                            const endRightMesh = new THREE.Mesh(endRightGeo, endStripeMat);
+                            endRightMesh.position.set(
+                                stallX + stallWidth - stripeWidth / 2 - centerX,
+                                stripeY,
+                                centerY - (endRowZ + stallDepth / 2)
+                            );
+                            buildingsGroup.add(endRightMesh);
+
+                            // Add label for special stalls
+                            if (info.type === 'ada' || info.type === 'ev' || info.type === 'compact') {
+                                let label = '';
+                                if (info.type === 'ada') label = '♿';
+                                else if (info.type === 'ev') label = '⚡';
+                                else if (info.type === 'compact') label = 'C';
+
+                                const labelSprite = createIconSprite(label, 4);
+                                labelSprite.position.set(
+                                    stallX + stallWidth / 2 - centerX,
+                                    stripeY + 1.5,
+                                    centerY - (endRowZ + stallDepth / 2)
+                                );
+                                buildingsGroup.add(labelSprite);
+                            }
+
+                            // Stall number (controlled by showStallNumbers)
+                            if (showStallNumbers) {
+                                const rowLetter = String.fromCharCode(65 + numModules * 2); // After all module rows
+                                const stallNumber = String(s + 1).padStart(3, '0');
+                                const endStallLabel = `${rowLetter}-${stallNumber}`;
+                                const endNumberSprite = createTextSprite(endStallLabel, 2, '#374151', '#f9fafb');
+                                endNumberSprite.position.set(
+                                    stallX + stallWidth / 2 - centerX,
+                                    stallY + 0.5,
+                                    centerY - (endRowZ + stallDepth - 2)
+                                );
+                                endNumberSprite.scale.set(4, 2, 1);
+                                buildingsGroup.add(endNumberSprite);
+                            }
+
+                            // Add to allStalls for vehicle placement
+                            allStalls.push({
+                                x: stallX + stallWidth / 2 - centerX,
+                                z: centerY - (endRowZ + stallDepth / 2),
+                                rotation: 0,
+                                type: info.type
+                            });
+
+                            stallIndex++;
+                        }
+                    } // End of if (drawEndRow)
+                }
+
+                // ============================================================
+                // 5b. RAISED CURBS (6" concrete curbs for visual separation)
+                // Creates clear 3D boundary between drive aisles and parking bays
+                // For irregular shapes: follow polygon edges
+                // For rectangular: use 4-sided rectangle
+                // ============================================================
+                const curbHeight = 0.5; // 6 inches
+                const curbWidth = 0.5;
+                const curbMat = new THREE.MeshStandardMaterial({
+                    color: 0xd1d5db, // Light gray concrete
+                    roughness: 0.9,
+                    metalness: 0.1
+                });
+
+                const createCurb = (x, z, w, d) => {
+                    const curbGeo = new THREE.BoxGeometry(w, curbHeight, d);
+                    const curbMesh = new THREE.Mesh(curbGeo, curbMat);
+                    curbMesh.position.set(
+                        x + w / 2 - centerX,
+                        curbHeight / 2,
+                        centerY - (z + d / 2)
+                    );
+                    curbMesh.castShadow = true;
+                    curbMesh.receiveShadow = true;
+                    return curbMesh;
+                };
+
+                // Helper to create curb along polygon edge
+                const createCurbAlongEdge = (p1, p2) => {
+                    const dx = p2.x - p1.x;
+                    const dy = p2.y - p1.y; // polygon y = 3D z
+                    const edgeLen = Math.sqrt(dx * dx + dy * dy);
+                    if (edgeLen < 1) return null;
+
+                    const midX = (p1.x + p2.x) / 2;
+                    const midZ = (p1.y + p2.y) / 2;
+                    const angle = Math.atan2(dy, dx);
+
+                    const curbGeo = new THREE.BoxGeometry(edgeLen, curbHeight, curbWidth);
+                    const curbMesh = new THREE.Mesh(curbGeo, curbMat);
+                    curbMesh.position.set(
+                        midX - centerX,
+                        curbHeight / 2,
+                        centerY - midZ
+                    );
+                    curbMesh.rotation.y = -angle;
+                    curbMesh.castShadow = true;
+                    curbMesh.receiveShadow = true;
+                    return curbMesh;
+                };
+
+                // Outer perimeter curbs (around fire lane boundary)
+                // These define the lot edge - no inner curbs that would block stall access
+                if (isIrregular && loopOuterPolygon && loopOuterPolygon.length >= 3) {
+                    // IRREGULAR: Draw curbs along polygon edges
+                    for (let i = 0; i < loopOuterPolygon.length; i++) {
+                        const p1 = loopOuterPolygon[i];
+                        const p2 = loopOuterPolygon[(i + 1) % loopOuterPolygon.length];
+                        const curbMesh = createCurbAlongEdge(p1, p2);
+                        if (curbMesh) buildingsGroup.add(curbMesh);
+                    }
+                } else {
+                    // RECTANGULAR: Use 4-sided rectangle
+                    buildingsGroup.add(createCurb(loopOX, loopOZ, loopTotalW, curbWidth)); // Top
+                    buildingsGroup.add(createCurb(loopOX, loopOZ + loopTotalD - curbWidth, loopTotalW, curbWidth)); // Bottom
+                    buildingsGroup.add(createCurb(loopOX, loopOZ, curbWidth, loopTotalD)); // Left
+                    buildingsGroup.add(createCurb(loopOX + loopTotalW - curbWidth, loopOZ, curbWidth, loopTotalD)); // Right
+                }
+
+                // ============================================================
+                // FIRE LANE MARKINGS (red curb paint and NO PARKING text)
+                // Per IFC Section 503.3 - Fire lanes must be marked
+                // Red painted strip on inner edge of curbs (no z-fighting)
+                // ============================================================
+                const fireLanePaintMat = new THREE.MeshStandardMaterial({
+                    color: 0xdc2626, // Fire lane red
+                    roughness: 0.6,
+                    metalness: 0.1
+                });
+
+                // Red paint as vertical face on inner side of curbs
+                // This avoids z-fighting by placing on the inner vertical face, not top
+                const fireLanePaintHeight = curbHeight * 0.7; // 70% of curb height
+                const createFireLanePaintStrip = (x, z, w, d, isVertical = false) => {
+                    // Create a thin box that shows on the inner face of the curb
+                    const stripThickness = 0.08;
+                    let geo, posX, posZ;
+
+                    if (isVertical) {
+                        // Left/Right curbs - strip on inner vertical face
+                        geo = new THREE.BoxGeometry(stripThickness, fireLanePaintHeight, d);
+                        posX = x - centerX;
+                        posZ = centerY - (z + d / 2);
+                    } else {
+                        // Top/Bottom curbs - strip on inner vertical face  
+                        geo = new THREE.BoxGeometry(w, fireLanePaintHeight, stripThickness);
+                        posX = x + w / 2 - centerX;
+                        posZ = centerY - z;
+                    }
+
+                    const paintMesh = new THREE.Mesh(geo, fireLanePaintMat);
+                    paintMesh.position.set(posX, fireLanePaintHeight / 2, posZ);
+                    return paintMesh;
+                };
+
+                // Helper to create fire lane paint strip along polygon edge
+                const createFireLanePaintAlongEdge = (p1, p2) => {
+                    const dx = p2.x - p1.x;
+                    const dy = p2.y - p1.y;
+                    const edgeLen = Math.sqrt(dx * dx + dy * dy);
+                    if (edgeLen < 1) return null;
+
+                    const midX = (p1.x + p2.x) / 2;
+                    const midZ = (p1.y + p2.y) / 2;
+                    const angle = Math.atan2(dy, dx);
+
+                    const stripThickness = 0.08;
+                    const geo = new THREE.BoxGeometry(edgeLen, fireLanePaintHeight, stripThickness);
+                    const paintMesh = new THREE.Mesh(geo, fireLanePaintMat);
+                    paintMesh.position.set(
+                        midX - centerX,
+                        fireLanePaintHeight / 2,
+                        centerY - midZ
+                    );
+                    paintMesh.rotation.y = -angle;
+                    return paintMesh;
+                };
+
+                // Draw fire lane paint strips
+                if (isIrregular && loopOuterPolygon && loopOuterPolygon.length >= 3) {
+                    // IRREGULAR: Paint strips along polygon edges
+                    for (let i = 0; i < loopOuterPolygon.length; i++) {
+                        const p1 = loopOuterPolygon[i];
+                        const p2 = loopOuterPolygon[(i + 1) % loopOuterPolygon.length];
+                        const paintMesh = createFireLanePaintAlongEdge(p1, p2);
+                        if (paintMesh) buildingsGroup.add(paintMesh);
+                    }
+                } else {
+                    // RECTANGULAR: Inner face paint strips on all four curbs
+                    // Top curb - paint on inner (bottom) face
+                    buildingsGroup.add(createFireLanePaintStrip(loopOX, loopOZ + curbWidth - 0.04, loopTotalW, curbWidth, false));
+                    // Bottom curb - paint on inner (top) face
+                    buildingsGroup.add(createFireLanePaintStrip(loopOX, loopOZ + loopTotalD - curbWidth + 0.04, loopTotalW, curbWidth, false));
+                    // Left curb - paint on inner (right) face
+                    buildingsGroup.add(createFireLanePaintStrip(loopOX + curbWidth - 0.04, loopOZ + curbWidth, curbWidth, loopTotalD - curbWidth * 2, true));
+                    // Right curb - paint on inner (left) face
+                    buildingsGroup.add(createFireLanePaintStrip(loopOX + loopTotalW - curbWidth + 0.04, loopOZ + curbWidth, curbWidth, loopTotalD - curbWidth * 2, true));
+                }
+
+                // "NO PARKING - FIRE LANE" text labels along perimeter
+                const fireLaneTextSpacing = 100; // Every 100ft
+                const fireLaneTextY = curbHeight + 0.1;
+
+                if (isIrregular && loopOuterPolygon && loopOuterPolygon.length >= 3) {
+                    // IRREGULAR: Place labels along polygon edges
+                    for (let i = 0; i < loopOuterPolygon.length; i++) {
+                        const p1 = loopOuterPolygon[i];
+                        const p2 = loopOuterPolygon[(i + 1) % loopOuterPolygon.length];
+                        const edgeLen = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+                        if (edgeLen < 30) continue; // Skip short edges
+
+                        const numLabels = Math.max(1, Math.floor(edgeLen / fireLaneTextSpacing));
+                        for (let j = 0; j < numLabels; j++) {
+                            const t = (j + 0.5) / numLabels;
+                            const labelX = p1.x + t * (p2.x - p1.x);
+                            const labelZ = p1.y + t * (p2.y - p1.y);
+                            const fireLabel = createTextSprite('🚒 FIRE LANE', 3, '#dc2626', '#ffffff');
+                            fireLabel.position.set(labelX - centerX, fireLaneTextY + 2, centerY - labelZ);
+                            buildingsGroup.add(fireLabel);
+                        }
+                    }
+                } else {
+                    // RECTANGULAR: Top and bottom edge labels
+                    const topFireLaneLabels = Math.max(1, Math.floor(loopTotalW / fireLaneTextSpacing));
+                    for (let i = 0; i < topFireLaneLabels; i++) {
+                        const labelX = loopOX + (i + 0.5) * loopTotalW / topFireLaneLabels;
+                        const fireLabel = createTextSprite('🚒 FIRE LANE', 3, '#dc2626', '#ffffff');
+                        fireLabel.position.set(labelX - centerX, fireLaneTextY + 2, centerY - (loopOZ + loopWidth / 2));
+                        buildingsGroup.add(fireLabel);
+                    }
+
+                    // Bottom edge labels
+                    for (let i = 0; i < topFireLaneLabels; i++) {
+                        const labelX = loopOX + (i + 0.5) * loopTotalW / topFireLaneLabels;
+                        const fireLabel = createTextSprite('🚒 FIRE LANE', 3, '#dc2626', '#ffffff');
+                        fireLabel.position.set(labelX - centerX, fireLaneTextY + 2, centerY - (loopOZ + loopTotalD - loopWidth / 2));
+                        buildingsGroup.add(fireLabel);
+                    }
+                }
+
+                // NOTE: No inner curbs - wheel stops define stall boundaries
+                // Cars need unobstructed access from aisles to stalls
+
+                // ============================================================
+                // 5c. WHEEL STOPS (concrete bumpers at REAR of stalls)
+                // Standard 6' long, 6" wide, 4" tall
+                // IMPORTANT: In double-loaded parking, wheel stops go at the REAR
+                // of each stall (away from the aisle, where the vehicle nose ends)
+                // - Top row: vehicles nose UP, wheel stop at TOP of stall
+                // - Bottom row: vehicles nose DOWN, wheel stop at BOTTOM of stall
+                // ============================================================
+                const wheelStopMat = new THREE.MeshStandardMaterial({
+                    color: 0x9ca3af, // Gray concrete
+                    roughness: 0.95,
+                    metalness: 0.05
+                });
+                const wheelStopLength = 5; // 5ft (shorter than stall width)
+                const wheelStopWidth = 0.5;
+                const wheelStopHeight = 0.35; // ~4 inches
+                const wheelStopInset = 2; // Inset from rear edge of stall
+
+                // Add wheel stops for each stall
+                let wsIndex = 0;
+                const lean3D = isAngledParking ? stallWidth * Math.cos((parkingAngle * Math.PI) / 180) : 0;
+
+                for (let m = 0; m < numModules; m++) {
+                    const moduleStartZ = interiorZ + m * moduleDepth;
+                    const aisleZ = moduleStartZ + (isAngledParking ? effectiveStallDepth : stallDepth);
+
+                    for (let row = 0; row < 2; row++) {
+                        const rowZ = row === 0 ? moduleStartZ : aisleZ + effectiveAisleWidth;
+                        const isTopRow = (row === 0);
+                        const actualStallDepth = isAngledParking ? effectiveStallDepth : stallDepth;
+                        const actualStallWidth = isAngledParking ? effectiveStallModuleWidth : stallWidth;
+
+                        for (let s = 0; s < stallsPerRow; s++) {
+                            // Apply lean offset for angled parking
+                            const leanOffset = isAngledParking && isTopRow ? lean3D : 0;
+                            const stallX = interiorX + leanOffset + s * actualStallWidth;
+
+                            // For irregular shapes, use stricter validation
+                            if (isIrregular && loopInnerPolygon && loopInnerPolygon.length >= 3) {
+                                if (isAngledParking) {
+                                    const stallCorners = getAngledStallCorners3D(stallX, rowZ, actualStallWidth, actualStallDepth, parkingAngle, stallWidth, isTopRow);
+                                    const center = getAngledStallCenter3D(stallCorners);
+                                    const centerInInner = isPointInPolygon(center, loopInnerPolygon);
+                                    const centerInOuter = loopOuterPolygon ? isPointInPolygon(center, loopOuterPolygon) : true;
+                                    const cornersInInner = isAngledStallInPolygon3D(stallCorners, loopInnerPolygon);
+
+                                    if (!centerInInner || !centerInOuter || !cornersInInner) {
+                                        continue;
+                                    }
+                                } else {
+                                    const stallCenterX = stallX + stallWidth / 2;
+                                    const stallCenterZ = rowZ + stallDepth / 2;
+                                    const centerPoint = { x: stallCenterX, y: stallCenterZ };
+
+                                    const centerInInner = isPointInPolygon(centerPoint, loopInnerPolygon);
+                                    const centerInOuter = loopOuterPolygon ? isPointInPolygon(centerPoint, loopOuterPolygon) : true;
+                                    const cornersInInner = isRectInPolygon(stallX, rowZ, stallWidth, stallDepth, loopInnerPolygon);
+
+                                    if (!centerInInner || !centerInOuter || !cornersInInner) {
+                                        continue; // Skip - stall is outside polygon boundary
+                                    }
+                                }
+                            } else if (isAngledParking) {
+                                // Rectangular bounds check for angled stalls
+                                const stallCorners = getAngledStallCorners3D(stallX, rowZ, actualStallWidth, actualStallDepth, parkingAngle, stallWidth, isTopRow);
+                                const allCornersInBounds = stallCorners.every(corner =>
+                                    corner.x >= interiorX &&
+                                    corner.x <= interiorX + interiorW
+                                );
+                                if (!allCornersInBounds) continue;
+                            }
+
+                            // Calculate wheel stop position - centered on back edge of stall
+                            let stopX, stopZ;
+                            if (isAngledParking) {
+                                // Get actual parallelogram corners and center on back edge
+                                const stallCorners = getAngledStallCorners3D(stallX, rowZ, actualStallWidth, actualStallDepth, parkingAngle, stallWidth, isTopRow);
+                                // Back corners are indices 2 and 3 (y is Z in 3D)
+                                const backLeft = stallCorners[3];
+                                const backRight = stallCorners[2];
+                                const backCenterX = (backLeft.x + backRight.x) / 2;
+                                const backCenterZ = (backLeft.y + backRight.y) / 2;
+                                stopX = backCenterX;
+                                stopZ = backCenterZ - wheelStopInset - wheelStopWidth / 2;
+                            } else {
+                                stopX = stallX + actualStallWidth / 2;
+                                // For 90° parking: top row rear at top, bottom row rear at bottom
+                                stopZ = row === 0
+                                    ? rowZ + wheelStopInset
+                                    : rowZ + actualStallDepth - wheelStopInset - wheelStopWidth;
+                            }
+
+                            const wsGeo = new THREE.BoxGeometry(wheelStopLength, wheelStopHeight, wheelStopWidth);
+                            const wsMesh = new THREE.Mesh(wsGeo, wheelStopMat);
+                            wsMesh.position.set(
+                                stopX - centerX,
+                                wheelStopHeight / 2,
+                                centerY - (stopZ + wheelStopWidth / 2)
+                            );
+                            wsMesh.castShadow = true;
+                            buildingsGroup.add(wsMesh);
+                            wsIndex++;
+                        }
+                    }
+                }
+
+                // ============================================================
+                // 5c-2. END ISLANDS (landscape islands at row ends)
+                // Professional design with raised curbs, mulch, grass, and trees
+                // SYNCED with 2D view
+                // ============================================================
+                if (endIslands) {
+                    // Materials
+                    const curbMat3D = new THREE.MeshStandardMaterial({
+                        color: 0xd1d5db, // Concrete gray
+                        roughness: 0.8,
+                        metalness: 0.1
+                    });
+                    const mulchMat = new THREE.MeshStandardMaterial({
+                        color: 0x854d0e, // Brown mulch
+                        roughness: 1.0,
+                        metalness: 0.0
+                    });
+                    const grassMat = new THREE.MeshStandardMaterial({
+                        color: 0x22c55e, // Green grass
+                        roughness: 0.9,
+                        metalness: 0.0
+                    });
+                    const treeTrunkMat = new THREE.MeshStandardMaterial({
+                        color: 0x8b4513, // Brown
+                        roughness: 0.9,
+                        metalness: 0.0
+                    });
+                    const treeCanopyMat = new THREE.MeshStandardMaterial({
+                        color: 0x166534, // Dark green
+                        roughness: 0.8,
+                        metalness: 0.0
+                    });
+
+                    const createEndIsland3D = (islandX, islandZ) => {
+                        const islandGroup = new THREE.Group();
+                        const curbWidth = 0.5;
+                        const curbHeight = 0.3;
+                        const mulchHeight = 0.15;
+                        const grassHeight = 0.1;
+
+                        // Raised curb border (concrete frame)
+                        const curbGeo = new THREE.BoxGeometry(stallWidth, curbHeight, stallDepth);
+                        const curbMesh = new THREE.Mesh(curbGeo, curbMat3D);
+                        curbMesh.position.set(stallWidth / 2, curbHeight / 2, -stallDepth / 2);
+                        curbMesh.receiveShadow = true;
+                        curbMesh.castShadow = true;
+                        islandGroup.add(curbMesh);
+
+                        // Mulch layer (inner, slightly recessed)
+                        const mulchW = stallWidth - curbWidth * 2;
+                        const mulchD = stallDepth - curbWidth * 2;
+                        const mulchGeo = new THREE.BoxGeometry(mulchW, mulchHeight, mulchD);
+                        const mulchMesh = new THREE.Mesh(mulchGeo, mulchMat);
+                        mulchMesh.position.set(stallWidth / 2, curbHeight + mulchHeight / 2, -stallDepth / 2);
+                        mulchMesh.receiveShadow = true;
+                        islandGroup.add(mulchMesh);
+
+                        // Grass patch in center
+                        const grassPadding = 1.5;
+                        const grassW = stallWidth - grassPadding * 2;
+                        const grassD = stallDepth - grassPadding * 2;
+                        const grassGeo = new THREE.BoxGeometry(grassW, grassHeight, grassD);
+                        const grassMesh = new THREE.Mesh(grassGeo, grassMat);
+                        grassMesh.position.set(stallWidth / 2, curbHeight + mulchHeight + grassHeight / 2, -stallDepth / 2);
+                        grassMesh.receiveShadow = true;
+                        islandGroup.add(grassMesh);
+
+                        // Tree trunk
+                        const trunkHeight = 4;
+                        const trunkGeo = new THREE.CylinderGeometry(0.25, 0.35, trunkHeight, 8);
+                        const trunkMesh = new THREE.Mesh(trunkGeo, treeTrunkMat);
+                        trunkMesh.position.set(stallWidth / 2, curbHeight + trunkHeight / 2, -stallDepth / 2);
+                        trunkMesh.castShadow = true;
+                        islandGroup.add(trunkMesh);
+
+                        // Tree canopy (sphere)
+                        const canopyRadius = 2.5;
+                        const canopyGeo = new THREE.SphereGeometry(canopyRadius, 12, 12);
+                        const canopyMesh = new THREE.Mesh(canopyGeo, treeCanopyMat);
+                        canopyMesh.position.set(stallWidth / 2, curbHeight + trunkHeight + canopyRadius * 0.7, -stallDepth / 2);
+                        canopyMesh.castShadow = true;
+                        canopyMesh.receiveShadow = true;
+                        islandGroup.add(canopyMesh);
+
+                        // Position the island group
+                        islandGroup.position.set(islandX - centerX, 0, centerY - islandZ);
+                        return islandGroup;
+                    };
+
+                    for (let m = 0; m < numModules; m++) {
+                        const moduleStartZ = interiorZ + m * moduleDepth;
+                        const aisleZ = moduleStartZ + stallDepth;
+
+                        for (let row = 0; row < 2; row++) {
+                            const rowZ = row === 0 ? moduleStartZ : aisleZ + effectiveAisleWidth;
+
+                            // Left end island (first stall position)
+                            buildingsGroup.add(createEndIsland3D(interiorX, rowZ));
+
+                            // Right end island (last stall position)
+                            const rightIslandX = interiorX + (stallsPerRow - 1) * stallWidth;
+                            buildingsGroup.add(createEndIsland3D(rightIslandX, rowZ));
+                        }
+                    }
+                }
+
+                // ============================================================
+                // 5d. LIGHT POLES (tall poles with fixtures facing inward)
+                // Spacing: ~80ft, positioned at corners and along perimeter
+                // Fixtures rotate to face toward parking lot center
+                // Controlled by showLightPoles config option
+                // ============================================================
+                if (showLightPoles) {
+                    const poleHeight = 25; // 25ft tall
+                    const poleRadius = 0.3;
+                    const fixtureSize = 3;
+                    const poleMat = new THREE.MeshStandardMaterial({
+                        color: 0x4b5563, // Dark gray metal
+                        roughness: 0.4,
+                        metalness: 0.8
+                    });
+                    const fixtureMat = new THREE.MeshStandardMaterial({
+                        color: 0xfef3c7, // Warm white (light fixture)
+                        emissive: 0xfef3c7,
+                        emissiveIntensity: 0.3,
+                        roughness: 0.2,
+                        metalness: 0.6
+                    });
+
+                    // rotation: angle in radians - 0 = facing +X, PI/2 = facing +Z, etc.
+                    const createLightPole = (x, z, rotation = 0) => {
+                        const poleGroup = new THREE.Group();
+
+                        // Pole (cylinder) - stays vertical
+                        const poleGeo = new THREE.CylinderGeometry(poleRadius, poleRadius * 1.2, poleHeight, 8);
+                        const poleMesh = new THREE.Mesh(poleGeo, poleMat);
+                        poleMesh.position.set(0, poleHeight / 2, 0);
+                        poleMesh.castShadow = true;
+                        poleGroup.add(poleMesh);
+
+                        // Fixture arm group (rotates to face direction)
+                        const fixtureGroup = new THREE.Group();
+
+                        // Fixture arm (horizontal, extends outward)
+                        const armGeo = new THREE.BoxGeometry(fixtureSize, 0.3, 0.3);
+                        const armMesh = new THREE.Mesh(armGeo, poleMat);
+                        armMesh.position.set(fixtureSize / 2, 0, 0);
+                        fixtureGroup.add(armMesh);
+
+                        // Light fixture (box with emissive)
+                        const fixtureGeo = new THREE.BoxGeometry(fixtureSize * 0.8, 0.5, 1.5);
+                        const fixtureMesh = new THREE.Mesh(fixtureGeo, fixtureMat);
+                        fixtureMesh.position.set(fixtureSize / 2, -0.5, 0);
+                        fixtureGroup.add(fixtureMesh);
+
+                        // Position fixture group at top of pole and rotate
+                        fixtureGroup.position.set(0, poleHeight - 0.5, 0);
+                        fixtureGroup.rotation.y = rotation;
+                        poleGroup.add(fixtureGroup);
+
+                        // Position the whole pole group
+                        poleGroup.position.set(x - centerX, 0, centerY - z);
+                        return poleGroup;
+                    };
+
+                    const poleSpacing = 80;
+                    const poleSafeOffset = loopInset / 2;
+
+                    if (isIrregular && loopOuterPolygon && loopOuterPolygon.length >= 3) {
+                        // IRREGULAR POLYGON: Place poles at vertices and along edges
+                        // Use winding direction to determine outward (opposite of inward)
+                        const windingSign = getWindingSign3D(loopOuterPolygon);
+
+                        for (let i = 0; i < loopOuterPolygon.length; i++) {
+                            const prev = loopOuterPolygon[(i - 1 + loopOuterPolygon.length) % loopOuterPolygon.length];
+                            const p1 = loopOuterPolygon[i];
+                            const p2 = loopOuterPolygon[(i + 1) % loopOuterPolygon.length];
+
+                            // Edge vectors for bisector calculation
+                            const dx1 = p1.x - prev.x;
+                            const dy1 = p1.y - prev.y;
+                            const dx2 = p2.x - p1.x;
+                            const dy2 = p2.y - p1.y;
+                            const len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1) || 1;
+                            const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2) || 1;
+
+                            // Outward normals using winding (opposite of inward)
+                            const n1x = -windingSign * dy1 / len1;
+                            const n1y = windingSign * dx1 / len1;
+                            const n2x = -windingSign * dy2 / len2;
+                            const n2y = windingSign * dx2 / len2;
+
+                            // Bisector (average of outward normals)
+                            let bx = (n1x + n2x) / 2;
+                            let by = (n1y + n2y) / 2;
+                            const bLen = Math.sqrt(bx * bx + by * by) || 1;
+                            bx /= bLen;
+                            by /= bLen;
+
+                            // Corner pole (placed OUTSIDE the loop, in landscaping strip)
+                            const cornerX = p1.x + bx * poleSafeOffset;
+                            const cornerZ = p1.y + by * poleSafeOffset;
+                            const cornerAngle = Math.atan2(-by, -bx); // Fixture points inward
+                            buildingsGroup.add(createLightPole(cornerX, cornerZ, cornerAngle));
+
+                            // Edge poles (every ~80ft along edge)
+                            const edgeLen = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+                            const numEdgePoles = Math.max(0, Math.floor(edgeLen / poleSpacing) - 1);
+                            if (numEdgePoles > 0) {
+                                const ux = dx2 / edgeLen;
+                                const uy = dy2 / edgeLen;
+                                // Outward perpendicular for this edge
+                                const outX = -windingSign * uy;
+                                const outY = windingSign * ux;
+                                for (let j = 1; j <= numEdgePoles; j++) {
+                                    const t = j * edgeLen / (numEdgePoles + 1);
+                                    const edgeX = p1.x + ux * t;
+                                    const edgeY = p1.y + uy * t;
+                                    const px = edgeX + outX * poleSafeOffset;
+                                    const pz = edgeY + outY * poleSafeOffset;
+                                    const poleAngle = Math.atan2(-outY, -outX); // Point inward
+                                    buildingsGroup.add(createLightPole(px, pz, poleAngle));
+                                }
+                            }
+                        }
+                    } else {
+                        // RECTANGULAR: Original rectangular pole placement
+                        // Place light poles at corners (in landscaping strip, facing inward)
+                        buildingsGroup.add(createLightPole(ox + poleSafeOffset, oz + poleSafeOffset, Math.PI / 4));
+                        buildingsGroup.add(createLightPole(ox + buildableW - poleSafeOffset, oz + poleSafeOffset, Math.PI - Math.PI / 4));
+                        buildingsGroup.add(createLightPole(ox + poleSafeOffset, oz + buildableD - poleSafeOffset, -Math.PI / 4));
+                        buildingsGroup.add(createLightPole(ox + buildableW - poleSafeOffset, oz + buildableD - poleSafeOffset, Math.PI + Math.PI / 4));
+
+                        // Place light poles along the perimeter (every ~80ft)
+                        const topBottomPoleCount = Math.max(0, Math.floor((buildableW - poleSafeOffset * 4) / poleSpacing) - 1);
+                        const sidesPoleCount = Math.max(0, Math.floor((buildableD - poleSafeOffset * 4) / poleSpacing) - 1);
+
+                        // Top edge poles
+                        for (let i = 1; i <= topBottomPoleCount; i++) {
+                            const poleX = ox + poleSafeOffset * 2 + i * (buildableW - poleSafeOffset * 4) / (topBottomPoleCount + 1);
+                            buildingsGroup.add(createLightPole(poleX, oz + poleSafeOffset, Math.PI / 2));
+                        }
+                        // Bottom edge poles
+                        for (let i = 1; i <= topBottomPoleCount; i++) {
+                            const poleX = ox + poleSafeOffset * 2 + i * (buildableW - poleSafeOffset * 4) / (topBottomPoleCount + 1);
+                            buildingsGroup.add(createLightPole(poleX, oz + buildableD - poleSafeOffset, -Math.PI / 2));
+                        }
+                        // Left edge poles
+                        for (let i = 1; i <= sidesPoleCount; i++) {
+                            const poleZ = oz + poleSafeOffset * 2 + i * (buildableD - poleSafeOffset * 4) / (sidesPoleCount + 1);
+                            buildingsGroup.add(createLightPole(ox + poleSafeOffset, poleZ, 0));
+                        }
+                        // Right edge poles
+                        for (let i = 1; i <= sidesPoleCount; i++) {
+                            const poleZ = oz + poleSafeOffset * 2 + i * (buildableD - poleSafeOffset * 4) / (sidesPoleCount + 1);
+                            buildingsGroup.add(createLightPole(ox + buildableW - poleSafeOffset, poleZ, Math.PI));
+                        }
+                    }
+                } // End of showLightPoles
+
+                // ============================================================
+                // 5e. LANDSCAPING TREES (low-poly trees at corners and edges)
+                // Adds visual appeal and realism to the parking lot
+                // ============================================================
+                const createTree = (x, z, scale = 1) => {
+                    const treeGroup = new THREE.Group();
+
+                    // Tree trunk (brown cylinder)
+                    const trunkHeight = 4 * scale;
+                    const trunkRadius = 0.5 * scale;
+                    const trunkMat = new THREE.MeshStandardMaterial({
+                        color: 0x8B4513, // Saddle brown
+                        roughness: 0.9,
+                        metalness: 0.0
+                    });
+                    const trunkGeo = new THREE.CylinderGeometry(trunkRadius * 0.7, trunkRadius, trunkHeight, 8);
+                    const trunkMesh = new THREE.Mesh(trunkGeo, trunkMat);
+                    trunkMesh.position.set(0, trunkHeight / 2, 0);
+                    trunkMesh.castShadow = true;
+                    treeGroup.add(trunkMesh);
+
+                    // Tree canopy (green cone - low-poly style)
+                    const canopyHeight = 8 * scale;
+                    const canopyRadius = 4 * scale;
+                    const canopyMat = new THREE.MeshStandardMaterial({
+                        color: 0x228B22, // Forest green
+                        roughness: 0.8,
+                        metalness: 0.0
+                    });
+                    // Bottom layer (widest)
+                    const canopy1Geo = new THREE.ConeGeometry(canopyRadius, canopyHeight * 0.5, 8);
+                    const canopy1Mesh = new THREE.Mesh(canopy1Geo, canopyMat);
+                    canopy1Mesh.position.set(0, trunkHeight + canopyHeight * 0.2, 0);
+                    canopy1Mesh.castShadow = true;
+                    treeGroup.add(canopy1Mesh);
+
+                    // Middle layer
+                    const canopy2Geo = new THREE.ConeGeometry(canopyRadius * 0.75, canopyHeight * 0.45, 8);
+                    const canopy2Mesh = new THREE.Mesh(canopy2Geo, canopyMat);
+                    canopy2Mesh.position.set(0, trunkHeight + canopyHeight * 0.5, 0);
+                    canopy2Mesh.castShadow = true;
+                    treeGroup.add(canopy2Mesh);
+
+                    // Top layer (smallest)
+                    const canopy3Geo = new THREE.ConeGeometry(canopyRadius * 0.5, canopyHeight * 0.4, 8);
+                    const canopy3Mesh = new THREE.Mesh(canopy3Geo, canopyMat);
+                    canopy3Mesh.position.set(0, trunkHeight + canopyHeight * 0.75, 0);
+                    canopy3Mesh.castShadow = true;
+                    treeGroup.add(canopy3Mesh);
+
+                    // Position tree group
+                    treeGroup.position.set(x - centerX, 0, centerY - z);
+                    return treeGroup;
+                };
+
+                // SAFE ZONE: Trees go in LANDSCAPING STRIP (between site edge and curbs)
+                // loopInset defines this strip - trees must stay within it
+                const treeSafeZone = loopInset - curbWidth; // Available space for trees
+                const treeOffset = Math.min(treeSafeZone / 2, 6); // Center of safe zone, max 6ft from edge
+
+                // Only add corner trees if there's enough space in landscaping strip
+                if (treeSafeZone >= 4) {
+                    // Top-left corner
+                    buildingsGroup.add(createTree(ox + treeOffset, oz + treeOffset, 0.8));
+                    // Top-right corner
+                    buildingsGroup.add(createTree(ox + buildableW - treeOffset, oz + treeOffset, 0.8));
+                    // Bottom-left corner
+                    buildingsGroup.add(createTree(ox + treeOffset, oz + buildableD - treeOffset, 0.8));
+                    // Bottom-right corner
+                    buildingsGroup.add(createTree(ox + buildableW - treeOffset, oz + buildableD - treeOffset, 0.8));
+                }
+
+                // Add trees along the perimeter (every ~60ft) - ONLY in landscaping strip
+                const treeSpacing = 60;
+                if (treeSafeZone >= 4) {
+                    const treesTopBottom = Math.max(0, Math.floor((buildableW - treeOffset * 4) / treeSpacing));
+                    const treesSides = Math.max(0, Math.floor((buildableD - treeOffset * 4) / treeSpacing));
+
+                    // Top edge trees - in landscaping strip
+                    for (let i = 1; i <= treesTopBottom; i++) {
+                        const treeX = ox + treeOffset * 2 + i * (buildableW - treeOffset * 4) / (treesTopBottom + 1);
+                        buildingsGroup.add(createTree(treeX, oz + treeOffset, 0.7 + Math.random() * 0.3));
+                    }
+                    // Bottom edge trees - in landscaping strip
+                    for (let i = 1; i <= treesTopBottom; i++) {
+                        const treeX = ox + treeOffset * 2 + i * (buildableW - treeOffset * 4) / (treesTopBottom + 1);
+                        buildingsGroup.add(createTree(treeX, oz + buildableD - treeOffset, 0.7 + Math.random() * 0.3));
+                    }
+                    // Left edge trees - in landscaping strip
+                    for (let i = 1; i <= treesSides; i++) {
+                        const treeZ = oz + treeOffset * 2 + i * (buildableD - treeOffset * 4) / (treesSides + 1);
+                        buildingsGroup.add(createTree(ox + treeOffset, treeZ, 0.7 + Math.random() * 0.3));
+                    }
+                    // Right edge trees - in landscaping strip
+                    for (let i = 1; i <= treesSides; i++) {
+                        const treeZ = oz + treeOffset * 2 + i * (buildableD - treeOffset * 4) / (treesSides + 1);
+                        buildingsGroup.add(createTree(ox + buildableW - treeOffset, treeZ, 0.7 + Math.random() * 0.3));
+                    }
+                }
+
+                // ============================================================
+                // 5f. INTERIOR LANDSCAPE ISLANDS (OPTIONAL)
+                // Per IBC/local codes: May be required every 12-15 stalls max
+                // Placed within long rows only if hasLandscaping enabled
+                // Provides shade, stormwater management, and visual appeal
+                // MATCHES 2D VIEW: Only enabled if hasLandscaping = true
+                // ============================================================
+                const islandStallInterval = landscapeInterval; // Island every N stalls
+                const islandWidth = stallWidth; // Same width as a parking stall
+                const islandDepth = stallDepth;
+                const islandCurbHeight = 0.4; // 5 inch curb
+
+                const islandMat = new THREE.MeshStandardMaterial({
+                    color: 0x4ade80, // Green grass/mulch
+                    roughness: 0.9,
+                    metalness: 0.0
+                });
+                const islandCurbMat = new THREE.MeshStandardMaterial({
+                    color: 0xd1d5db, // Concrete curb
+                    roughness: 0.8,
+                    metalness: 0.1
+                });
+
+                // Create a landscape island with tree
+                const createLandscapeIsland = (x, z, width, depth) => {
+                    const islandGroup = new THREE.Group();
+
+                    // Curb (raised border)
+                    const curbGeo = new THREE.BoxGeometry(width, islandCurbHeight, depth);
+                    const curbMesh = new THREE.Mesh(curbGeo, islandCurbMat);
+                    curbMesh.position.set(0, islandCurbHeight / 2, 0);
+                    curbMesh.castShadow = true;
+                    curbMesh.receiveShadow = true;
+                    islandGroup.add(curbMesh);
+
+                    // Green fill (mulch/grass surface)
+                    const fillGeo = new THREE.BoxGeometry(width - 0.8, 0.1, depth - 0.8);
+                    const fillMesh = new THREE.Mesh(fillGeo, islandMat);
+                    fillMesh.position.set(0, islandCurbHeight + 0.05, 0);
+                    fillMesh.receiveShadow = true;
+                    islandGroup.add(fillMesh);
+
+                    // Tree in center of island (smaller scale for interior)
+                    const treeGroup = createTree(0, 0, 0.6);
+                    treeGroup.position.set(0, islandCurbHeight, 0);
+                    islandGroup.add(treeGroup);
+
+                    // Position the island
+                    islandGroup.position.set(
+                        x + width / 2 - centerX,
+                        0,
+                        centerY - (z + depth / 2)
+                    );
+
+                    return islandGroup;
+                };
+
+                // Place interior islands within parking rows (only if enabled)
+                // NOTE: End-of-row islands are NOT placed to avoid blocking fire lanes
+                // Islands replace stall positions, not added outside rows
+                // SYNCED WITH 2D: Only adds islands if hasLandscaping is true
+                if (hasLandscaping) {
+                    for (let m = 0; m < numModules; m++) {
+                        const moduleStartZ = interiorZ + m * moduleDepth;
+
+                        // Row 0 (top row facing aisle)
+                        const row0Z = moduleStartZ;
+                        // Row 1 (bottom row facing aisle)
+                        const row1Z = moduleStartZ + stallDepth + effectiveAisleWidth;
+
+                        // Interior islands every N stalls within long rows
+                        // These replace parking stalls, not added at ends
+                        if (stallsPerRow > islandStallInterval) {
+                            const numInteriorIslands = Math.floor((stallsPerRow - 1) / islandStallInterval);
+                            for (let island = 1; island <= numInteriorIslands; island++) {
+                                const islandStallPos = island * islandStallInterval;
+                                const islandX = interiorX + islandStallPos * stallWidth;
+
+                                // Island in row 0
+                                buildingsGroup.add(createLandscapeIsland(
+                                    islandX,
+                                    row0Z,
+                                    islandWidth,
+                                    islandDepth
+                                ));
+
+                                // Island in row 1
+                                buildingsGroup.add(createLandscapeIsland(
+                                    islandX,
+                                    row1Z,
+                                    islandWidth,
+                                    islandDepth
+                                ));
+                            }
+                        }
+                    }
+                } // End hasLandscaping check
+
+                // ============================================================
+                // 5g. TRACKED VEHICLES (Swept Path Analysis)
+                // Renders user-placed vehicles matching the 2D view vehicle tracking
+                // ============================================================
+
+                // Vehicle type specifications (matching SiteGen.jsx VEHICLE_TYPES)
+                const VEHICLE_TYPES_3D = {
+                    passengerCar: { length: 17, width: 6.5, wheelbase: 10.8, minTurningRadius: 18, color: 0x3b82f6, bodyHeight: 4, cabinHeight: 3 },
+                    suv: { length: 19, width: 7, wheelbase: 12, minTurningRadius: 22, color: 0x22c55e, bodyHeight: 4.5, cabinHeight: 3.5 },
+                    deliveryTruck: { length: 30, width: 8, wheelbase: 20, minTurningRadius: 42, color: 0xf59e0b, bodyHeight: 8, cabinHeight: 4 },
+                    fireTruck: { length: 35, width: 8.5, wheelbase: 20, minTurningRadius: 25, color: 0xef4444, bodyHeight: 9, cabinHeight: 4 },
+                    ambulance: { length: 22, width: 7.5, wheelbase: 14, minTurningRadius: 28, color: 0xffffff, bodyHeight: 7, cabinHeight: 3 },
+                    bus: { length: 40, width: 8.5, wheelbase: 25, minTurningRadius: 42, color: 0x8b5cf6, bodyHeight: 10, cabinHeight: 3 },
+                    semiTrailer: { length: 45, width: 8.5, wheelbase: 40, minTurningRadius: 40, color: 0x6b7280, bodyHeight: 12, cabinHeight: 3 },
+                };
+
+                // Create 3D vehicle mesh
+                const createVehicle3D = (vehicleType, isSelected = false) => {
+                    const spec = VEHICLE_TYPES_3D[vehicleType] || VEHICLE_TYPES_3D.passengerCar;
+                    const vehicleGroup = new THREE.Group();
+
+                    const bodyLength = spec.length;
+                    const bodyWidth = spec.width;
+                    const bodyHeight = spec.bodyHeight;
+                    const cabinHeight = spec.cabinHeight;
+
+                    // Body
+                    const bodyMat = new THREE.MeshStandardMaterial({
+                        color: spec.color,
+                        roughness: 0.3,
+                        metalness: 0.7,
+                        emissive: isSelected ? 0x444444 : 0x000000
+                    });
+                    const bodyGeo = new THREE.BoxGeometry(bodyWidth, bodyHeight, bodyLength);
+                    const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
+                    bodyMesh.position.set(0, bodyHeight / 2 + 0.5, 0);
+                    bodyMesh.castShadow = true;
+                    vehicleGroup.add(bodyMesh);
+
+                    // Cabin (glass top)
+                    const cabinMat = new THREE.MeshStandardMaterial({
+                        color: 0x1e3a5f,
+                        roughness: 0.1,
+                        metalness: 0.5,
+                        transparent: true,
+                        opacity: 0.7
+                    });
+                    const cabinWidth = bodyWidth * 0.85;
+                    const cabinLength = bodyLength * 0.4;
+                    const cabinGeo = new THREE.BoxGeometry(cabinWidth, cabinHeight, cabinLength);
+                    const cabinMesh = new THREE.Mesh(cabinGeo, cabinMat);
+                    cabinMesh.position.set(0, bodyHeight + cabinHeight / 2 + 0.5, -bodyLength * 0.15);
+                    vehicleGroup.add(cabinMesh);
+
+                    // Wheels
+                    const wheelRadius = Math.min(1.5, bodyHeight * 0.35);
+                    const wheelWidth = 0.8;
+                    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.6, metalness: 0.3 });
+                    const wheelGeo = new THREE.CylinderGeometry(wheelRadius, wheelRadius, wheelWidth, 12);
+                    wheelGeo.rotateZ(Math.PI / 2);
+
+                    const wheelPositions = [
+                        { x: bodyWidth / 2 + wheelWidth / 2, y: wheelRadius, z: bodyLength * 0.35 },
+                        { x: -bodyWidth / 2 - wheelWidth / 2, y: wheelRadius, z: bodyLength * 0.35 },
+                        { x: bodyWidth / 2 + wheelWidth / 2, y: wheelRadius, z: -bodyLength * 0.35 },
+                        { x: -bodyWidth / 2 - wheelWidth / 2, y: wheelRadius, z: -bodyLength * 0.35 }
+                    ];
+                    wheelPositions.forEach(pos => {
+                        const wheelMesh = new THREE.Mesh(wheelGeo, wheelMat);
+                        wheelMesh.position.set(pos.x, pos.y, pos.z);
+                        vehicleGroup.add(wheelMesh);
+                    });
+
+                    // Selection ring for selected vehicle
+                    if (isSelected) {
+                        const ringGeo = new THREE.RingGeometry(Math.max(bodyLength, bodyWidth) * 0.6, Math.max(bodyLength, bodyWidth) * 0.65, 32);
+                        ringGeo.rotateX(-Math.PI / 2);
+                        const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+                        const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+                        ringMesh.position.set(0, 0.2, 0); // Above ground (0.1) to avoid z-fighting
+                        vehicleGroup.add(ringMesh);
+                    }
+
+                    return vehicleGroup;
+                };
+
+                // Render tracked vehicles
+                if (vehicles && vehicles.length > 0) {
+                    vehicles.forEach(vehicle => {
+                        const spec = VEHICLE_TYPES_3D[vehicle.type] || VEHICLE_TYPES_3D.passengerCar;
+                        const isSelected = selectedVehicle === vehicle.id;
+
+                        // Draw movement trail (swept path)
+                        if (vehicleTrailsVisible && vehicle.trail && vehicle.trail.length > 1) {
+                            // Trail center line
+                            const trailPoints = [];
+                            vehicle.trail.forEach(tp => {
+                                trailPoints.push(new THREE.Vector3(tp.x - centerX, 0.15, centerY - tp.y));
+                            });
+                            trailPoints.push(new THREE.Vector3(vehicle.x - centerX, 0.15, centerY - vehicle.y));
+
+                            const trailCurve = new THREE.CatmullRomCurve3(trailPoints, false);
+                            const trailGeo = new THREE.TubeGeometry(trailCurve, trailPoints.length * 4, 0.3, 8, false);
+                            const trailMat = new THREE.MeshBasicMaterial({
+                                color: spec.color,
+                                transparent: true,
+                                opacity: 0.5
+                            });
+                            const trailMesh = new THREE.Mesh(trailGeo, trailMat);
+                            buildingsGroup.add(trailMesh);
+
+                            // Swept path edges (left and right vehicle edges)
+                            const createEdgeLine = (offsetSign) => {
+                                const edgePoints = [];
+                                vehicle.trail.forEach(tp => {
+                                    const rotRad = (tp.rotation * Math.PI) / 180;
+                                    const offsetX = -Math.sin(rotRad) * (spec.width / 2) * offsetSign;
+                                    const offsetZ = Math.cos(rotRad) * (spec.width / 2) * offsetSign;
+                                    edgePoints.push(new THREE.Vector3(
+                                        tp.x + offsetX - centerX,
+                                        0.12,
+                                        centerY - (tp.y + offsetZ)
+                                    ));
+                                });
+                                // Add current position
+                                const currRotRad = (vehicle.rotation * Math.PI) / 180;
+                                const currOffsetX = -Math.sin(currRotRad) * (spec.width / 2) * offsetSign;
+                                const currOffsetZ = Math.cos(currRotRad) * (spec.width / 2) * offsetSign;
+                                edgePoints.push(new THREE.Vector3(
+                                    vehicle.x + currOffsetX - centerX,
+                                    0.12,
+                                    centerY - (vehicle.y + currOffsetZ)
+                                ));
+
+                                if (edgePoints.length >= 2) {
+                                    const lineGeo = new THREE.BufferGeometry().setFromPoints(edgePoints);
+                                    const lineMat = new THREE.LineDashedMaterial({
+                                        color: spec.color,
+                                        dashSize: 2,
+                                        gapSize: 1,
+                                        transparent: true,
+                                        opacity: 0.4
+                                    });
+                                    const line = new THREE.Line(lineGeo, lineMat);
+                                    line.computeLineDistances();
+                                    buildingsGroup.add(line);
+                                }
+                            };
+                            createEdgeLine(1);  // Left edge
+                            createEdgeLine(-1); // Right edge
+
+                            // Ghost vehicles at intervals along trail
+                            const ghostInterval = Math.max(1, Math.floor(vehicle.trail.length / 10));
+                            for (let i = 0; i < vehicle.trail.length; i += ghostInterval) {
+                                const tp = vehicle.trail[i];
+                                const progress = i / vehicle.trail.length;
+                                const opacity = 0.1 + progress * 0.2;
+
+                                const ghostVehicle = createVehicle3D(vehicle.type, false);
+                                ghostVehicle.position.set(tp.x - centerX, 0, centerY - tp.y);
+                                // Convert 2D rotation to 3D (compensate for X-axis mirror)
+                                ghostVehicle.rotation.y = (tp.rotation * Math.PI) / 180 + Math.PI / 2;
+                                ghostVehicle.traverse(child => {
+                                    if (child.isMesh && child.material) {
+                                        child.material = child.material.clone();
+                                        child.material.transparent = true;
+                                        child.material.opacity = opacity;
+                                    }
+                                });
+                                buildingsGroup.add(ghostVehicle);
+                            }
+                        }
+
+                        // Turning radius indicator for selected vehicle
+                        if (vehicleTurningRadiusVisible && isSelected) {
+                            const radiusGeo = new THREE.RingGeometry(
+                                spec.minTurningRadius - 0.5,
+                                spec.minTurningRadius + 0.5,
+                                64
+                            );
+                            radiusGeo.rotateX(-Math.PI / 2);
+                            const radiusMat = new THREE.MeshBasicMaterial({
+                                color: spec.color,
+                                transparent: true,
+                                opacity: 0.3,
+                                side: THREE.DoubleSide
+                            });
+                            const radiusMesh = new THREE.Mesh(radiusGeo, radiusMat);
+                            radiusMesh.position.set(vehicle.x - centerX, 0.08, centerY - vehicle.y); // Below ground (0.1), above aisles to avoid z-fighting
+                            buildingsGroup.add(radiusMesh);
+                        }
+
+                        // Main vehicle
+                        const vehicleMesh = createVehicle3D(vehicle.type, isSelected);
+                        vehicleMesh.position.set(vehicle.x - centerX, 0, centerY - vehicle.y);
+                        // Convert 2D rotation (0=right/east, increases CCW) to 3D Y rotation
+                        // Note: buildingsGroup has scale.x = -1 (mirrored), so rotation needs to be negated
+                        // to match the visual direction with movement direction
+                        vehicleMesh.rotation.y = (vehicle.rotation * Math.PI) / 180 + Math.PI / 2;
+                        // Mark for click detection
+                        vehicleMesh.userData.isTrackedVehicle = true;
+                        vehicleMesh.userData.vehicleId = vehicle.id;
+                        // Also mark all children for raycast detection
+                        vehicleMesh.traverse(child => {
+                            if (child.isMesh) {
+                                child.userData.isTrackedVehicle = true;
+                                child.userData.vehicleId = vehicle.id;
+                            }
+                        });
+                        buildingsGroup.add(vehicleMesh);
+                    });
+                }
+
+                // ============================================================
+                // 6. ENTRY/EXIT LANES (extending outward from lot)
+                // Supports: 'standard', 'channelized', 'fullAccess'
+                // Matches 2D view: Entry on RIGHT, Exit on LEFT (right-hand traffic)
+                // For irregular shapes, find the best edge (prefer bottom/south facing)
+                // ============================================================
+                if (hasEntryExit) {
+                    const laneWidth = 14;
+                    const laneDepth = 30;
+                    const laneY = 0.12;
+
+                    // Position at bottom center, extending outward
+                    // For irregular shapes, use polygon bounds; for regular, use loopOuter bounds
+                    let entryExitX, entryExitZ;
+
+                    if (isIrregular && loopOuterPolygon && loopOuterPolygon.length >= 3) {
+                        // Find the southernmost (highest Y in 2D / highest Z in 3D) edge
+                        // Look for an edge that faces outward (south) and is long enough
+                        let bestEdge = null;
+                        let maxY = -Infinity;
+
+                        for (let i = 0; i < loopOuterPolygon.length; i++) {
+                            const p1 = loopOuterPolygon[i];
+                            const p2 = loopOuterPolygon[(i + 1) % loopOuterPolygon.length];
+                            const midY = (p1.y + p2.y) / 2;
+                            const edgeLen = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+
+                            // Check if this edge is roughly horizontal (south-facing) and long enough for entry/exit
+                            const dx = Math.abs(p2.x - p1.x);
+                            const dy = Math.abs(p2.y - p1.y);
+                            const isHorizontal = dx > dy * 2; // At least 2x wider than tall
+
+                            if (isHorizontal && edgeLen >= laneWidth * 2 + 10 && midY > maxY) {
+                                maxY = midY;
+                                bestEdge = { p1, p2, midX: (p1.x + p2.x) / 2, midY };
+                            }
+                        }
+
+                        if (bestEdge) {
+                            entryExitX = bestEdge.midX;
+                            entryExitZ = bestEdge.midY;
+                        } else {
+                            // Fallback to polygon bounds
+                            const bounds = {
+                                minX: Math.min(...loopOuterPolygon.map(p => p.x)),
+                                maxX: Math.max(...loopOuterPolygon.map(p => p.x)),
+                                maxY: Math.max(...loopOuterPolygon.map(p => p.y))
+                            };
+                            entryExitX = (bounds.minX + bounds.maxX) / 2;
+                            entryExitZ = bounds.maxY;
+                        }
+                    } else {
+                        // Regular rectangle - use loop bounds
+                        entryExitX = loopOX + loopTotalW / 2;
+                        entryExitZ = loopOY + loopTotalD;
+                    }
+
+                    // Materials - semi-transparent tints like 2D
+                    const entryMat = new THREE.MeshStandardMaterial({
+                        color: 0x22c55e, // Green
+                        transparent: true,
+                        opacity: 0.3,
+                        roughness: 0.6
+                    });
+                    const exitMat = new THREE.MeshStandardMaterial({
+                        color: 0xef4444, // Red
+                        transparent: true,
+                        opacity: 0.3,
+                        roughness: 0.6
+                    });
+                    const arrowMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+                    // Variables for label positioning (set by each type)
+                    let entryLabelX, exitLabelX;
+                    let dividerWidth = 4;
+
+                    // ========================================
+                    // STANDARD ENTRY/EXIT (Per ITE/MUTCD)
+                    // Entry on RIGHT, Exit on LEFT with center divider
+                    // ========================================
+                    if (entryExitType === 'standard') {
+                        // Entry lane (RIGHT side - positive offset)
+                        const entryGeo = new THREE.PlaneGeometry(laneWidth, laneDepth);
+                        entryGeo.rotateX(-Math.PI / 2);
+                        const entryMesh = new THREE.Mesh(entryGeo, entryMat);
+                        entryMesh.position.set(
+                            entryExitX + laneWidth / 2 + dividerWidth / 2 - centerX,
+                            laneY,
+                            centerY - (entryExitZ + laneDepth / 2)
+                        );
+                        buildingsGroup.add(entryMesh);
+
+                        // Dark green center divider (like 2D)
+                        const divMat = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.5 });
+                        const divGeo = new THREE.PlaneGeometry(dividerWidth, laneDepth);
+                        divGeo.rotateX(-Math.PI / 2);
+                        const divMesh = new THREE.Mesh(divGeo, divMat);
+                        divMesh.position.set(
+                            entryExitX - centerX,
+                            laneY + 0.05,
+                            centerY - (entryExitZ + laneDepth / 2)
+                        );
+                        buildingsGroup.add(divMesh);
+
+                        // Exit lane (LEFT side - negative offset)
+                        const exitGeo = new THREE.PlaneGeometry(laneWidth, laneDepth);
+                        exitGeo.rotateX(-Math.PI / 2);
+                        const exitMesh = new THREE.Mesh(exitGeo, exitMat);
+                        exitMesh.position.set(
+                            entryExitX - laneWidth / 2 - dividerWidth / 2 - centerX,
+                            laneY,
+                            centerY - (entryExitZ + laneDepth / 2)
+                        );
+                        buildingsGroup.add(exitMesh);
+
+                        entryLabelX = entryExitX + laneWidth / 2 + dividerWidth / 2;
+                        exitLabelX = entryExitX - laneWidth / 2 - dividerWidth / 2;
+                    }
+                    // ========================================
+                    // CHANNELIZED ENTRY/EXIT (Per ITE Parking Generation)
+                    // Raised median island separating entry/exit lanes
+                    // Entry on RIGHT, Exit on LEFT
+                    // ========================================
+                    else if (entryExitType === 'channelized') {
+                        const islandWidth = 8;
+                        const islandLength = laneDepth - 5;
+                        dividerWidth = islandWidth;
+
+                        // Entry lane (RIGHT side for right-hand traffic)
+                        const entryGeo = new THREE.PlaneGeometry(laneWidth, laneDepth);
+                        entryGeo.rotateX(-Math.PI / 2);
+                        const entryMesh = new THREE.Mesh(entryGeo, entryMat);
+                        entryMesh.position.set(
+                            entryExitX + islandWidth / 2 + laneWidth / 2 - centerX,
+                            laneY,
+                            centerY - (entryExitZ + laneDepth / 2)
+                        );
+                        buildingsGroup.add(entryMesh);
+
+                        // Raised median island (tapered nose at street)
+                        const islandMat = new THREE.MeshStandardMaterial({
+                            color: 0x22c55e,
+                            transparent: true,
+                            opacity: 0.6,
+                            roughness: 0.7
+                        });
+                        const islandGeo = new THREE.BoxGeometry(islandWidth, 0.8, islandLength);
+                        const islandMesh = new THREE.Mesh(islandGeo, islandMat);
+                        islandMesh.position.set(
+                            entryExitX - centerX,
+                            0.4,
+                            centerY - (entryExitZ + laneDepth / 2 + 2.5)
+                        );
+                        buildingsGroup.add(islandMesh);
+
+                        // Island border (dark green outline)
+                        const borderMat = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.5 });
+                        const borderGeo = new THREE.BoxGeometry(islandWidth + 0.5, 1, 0.5);
+                        // Front border
+                        const frontBorder = new THREE.Mesh(borderGeo, borderMat);
+                        frontBorder.position.set(
+                            entryExitX - centerX,
+                            0.5,
+                            centerY - (entryExitZ + 3)
+                        );
+                        buildingsGroup.add(frontBorder);
+                        // Back border
+                        const backBorder = new THREE.Mesh(borderGeo, borderMat);
+                        backBorder.position.set(
+                            entryExitX - centerX,
+                            0.5,
+                            centerY - (entryExitZ + islandLength)
+                        );
+                        buildingsGroup.add(backBorder);
+
+                        // Exit lane (LEFT side for right-hand traffic)
+                        const exitGeo = new THREE.PlaneGeometry(laneWidth, laneDepth);
+                        exitGeo.rotateX(-Math.PI / 2);
+                        const exitMesh = new THREE.Mesh(exitGeo, exitMat);
+                        exitMesh.position.set(
+                            entryExitX - islandWidth / 2 - laneWidth / 2 - centerX,
+                            laneY,
+                            centerY - (entryExitZ + laneDepth / 2)
+                        );
+                        buildingsGroup.add(exitMesh);
+
+                        entryLabelX = entryExitX + islandWidth / 2 + laneWidth / 2;
+                        exitLabelX = entryExitX - islandWidth / 2 - laneWidth / 2;
+                    }
+                    // ========================================
+                    // FULL ACCESS ENTRY/EXIT (Wide Curb Cut)
+                    // Single wide opening, Entry on RIGHT, Exit on LEFT
+                    // ========================================
+                    else if (entryExitType === 'fullAccess') {
+                        const fullWidth = laneWidth * 2 + 4;
+                        const curbRadius = 8;
+                        dividerWidth = 0;
+
+                        // Main driveway opening (gray background)
+                        const fullMat = new THREE.MeshStandardMaterial({
+                            color: 0x9ca3af,
+                            transparent: true,
+                            opacity: 0.3,
+                            roughness: 0.8
+                        });
+                        const fullGeo = new THREE.PlaneGeometry(fullWidth + curbRadius * 2, laneDepth);
+                        fullGeo.rotateX(-Math.PI / 2);
+                        const fullMesh = new THREE.Mesh(fullGeo, fullMat);
+                        fullMesh.position.set(
+                            entryExitX - centerX,
+                            laneY,
+                            centerY - (entryExitZ + laneDepth / 2)
+                        );
+                        buildingsGroup.add(fullMesh);
+
+                        // Entry side overlay (RIGHT half, green tint)
+                        const entryOverlayGeo = new THREE.PlaneGeometry(fullWidth / 2 - 2, laneDepth - 4);
+                        entryOverlayGeo.rotateX(-Math.PI / 2);
+                        const entryOverlayMat = new THREE.MeshStandardMaterial({
+                            color: 0x22c55e,
+                            transparent: true,
+                            opacity: 0.4,
+                            roughness: 0.6
+                        });
+                        const entryOverlay = new THREE.Mesh(entryOverlayGeo, entryOverlayMat);
+                        entryOverlay.position.set(
+                            entryExitX + fullWidth / 4 - centerX,
+                            laneY + 0.05,
+                            centerY - (entryExitZ + laneDepth / 2)
+                        );
+                        buildingsGroup.add(entryOverlay);
+
+                        // Exit side overlay (LEFT half, red tint)
+                        const exitOverlayGeo = new THREE.PlaneGeometry(fullWidth / 2 - 2, laneDepth - 4);
+                        exitOverlayGeo.rotateX(-Math.PI / 2);
+                        const exitOverlayMat = new THREE.MeshStandardMaterial({
+                            color: 0xef4444,
+                            transparent: true,
+                            opacity: 0.4,
+                            roughness: 0.6
+                        });
+                        const exitOverlay = new THREE.Mesh(exitOverlayGeo, exitOverlayMat);
+                        exitOverlay.position.set(
+                            entryExitX - fullWidth / 4 - centerX,
+                            laneY + 0.05,
+                            centerY - (entryExitZ + laneDepth / 2)
+                        );
+                        buildingsGroup.add(exitOverlay);
+
+                        // Center dashed line (yellow advisory)
+                        const dashMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24 });
+                        const dashLength = 4;
+                        const dashGap = 4;
+                        const numDashes = Math.floor((laneDepth - 4) / (dashLength + dashGap));
+                        for (let d = 0; d < numDashes; d++) {
+                            const dashZ = entryExitZ + 2 + d * (dashLength + dashGap) + dashLength / 2;
+                            const dashGeo = new THREE.PlaneGeometry(0.5, dashLength);
+                            dashGeo.rotateX(-Math.PI / 2);
+                            const dashMesh = new THREE.Mesh(dashGeo, dashMat);
+                            dashMesh.position.set(
+                                entryExitX - centerX,
+                                laneY + 0.1,
+                                centerY - dashZ
+                            );
+                            buildingsGroup.add(dashMesh);
+                        }
+
+                        entryLabelX = entryExitX + fullWidth / 4;
+                        exitLabelX = entryExitX - fullWidth / 4;
+                    }
+
+                    // Arrow indicators (for all types)
+                    // Entry arrow (pointing IN toward lot - arrow points up/north in 3D space)
+                    const entryArrowShape = new THREE.Shape();
+                    entryArrowShape.moveTo(0, -4);   // Arrow points toward lot (up in view)
+                    entryArrowShape.lineTo(3, 0);
+                    entryArrowShape.lineTo(1, 0);
+                    entryArrowShape.lineTo(1, 4);
+                    entryArrowShape.lineTo(-1, 4);
+                    entryArrowShape.lineTo(-1, 0);
+                    entryArrowShape.lineTo(-3, 0);
+                    entryArrowShape.closePath();
+                    const entryArrowGeo = new THREE.ShapeGeometry(entryArrowShape);
+                    entryArrowGeo.rotateX(-Math.PI / 2);
+                    const entryArrowMesh = new THREE.Mesh(entryArrowGeo, arrowMat);
+                    entryArrowMesh.position.set(
+                        entryLabelX - centerX,
+                        laneY + 0.15,
+                        centerY - (entryExitZ + laneDepth / 2)
+                    );
+                    buildingsGroup.add(entryArrowMesh);
+
+                    // Exit arrow (pointing OUT away from lot - arrow points down/south in 3D space)
+                    const exitArrowShape = new THREE.Shape();
+                    exitArrowShape.moveTo(0, 4);   // Arrow points toward street (down in view)
+                    exitArrowShape.lineTo(3, 0);
+                    exitArrowShape.lineTo(1, 0);
+                    exitArrowShape.lineTo(1, -4);
+                    exitArrowShape.lineTo(-1, -4);
+                    exitArrowShape.lineTo(-1, 0);
+                    exitArrowShape.lineTo(-3, 0);
+                    exitArrowShape.closePath();
+                    const exitArrowGeo = new THREE.ShapeGeometry(exitArrowShape);
+                    exitArrowGeo.rotateX(-Math.PI / 2);
+                    const exitArrowMesh = new THREE.Mesh(exitArrowGeo, arrowMat);
+                    exitArrowMesh.position.set(
+                        exitLabelX - centerX,
+                        laneY + 0.1,
+                        centerY - (entryExitZ + laneDepth / 2)
+                    );
+                    buildingsGroup.add(exitArrowMesh);
+
+                    // ============================================================
+                    // 7. CROSSWALK (white zebra stripes across lanes)
+                    // Height matches other crosswalks (crosswalkY) for consistency
+                    // ============================================================
+                    if (hasCrosswalk) {
+                        const crosswalkZ = entryExitZ + 4;
+                        const stripeWidth = 2;
+                        const stripeDepth = 6;
+                        const stripeGap = 2;
+                        const crosswalkMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+                        // Entry lane crosswalk stripes (use entryLabelX as center)
+                        const numEntryStripes = Math.floor(laneWidth / (stripeWidth + stripeGap));
+                        for (let s = 0; s < numEntryStripes; s++) {
+                            const stripeX = entryLabelX - laneWidth / 2 + s * (stripeWidth + stripeGap) + stripeWidth / 2 + 1;
+                            const stripeGeo = new THREE.PlaneGeometry(stripeWidth, stripeDepth);
+                            stripeGeo.rotateX(-Math.PI / 2);
+                            const stripeMesh = new THREE.Mesh(stripeGeo, crosswalkMat);
+                            stripeMesh.position.set(
+                                stripeX - centerX,
+                                laneY + 0.01,
+                                centerY - (crosswalkZ + stripeDepth / 2)
+                            );
+                            buildingsGroup.add(stripeMesh);
+                        }
+
+                        // Exit lane crosswalk stripes (use exitLabelX as center)
+                        const numExitStripes = Math.floor(laneWidth / (stripeWidth + stripeGap));
+                        for (let s = 0; s < numExitStripes; s++) {
+                            const stripeX = exitLabelX - laneWidth / 2 + s * (stripeWidth + stripeGap) + stripeWidth / 2 + 1;
+                            const stripeGeo = new THREE.PlaneGeometry(stripeWidth, stripeDepth);
+                            stripeGeo.rotateX(-Math.PI / 2);
+                            const stripeMesh = new THREE.Mesh(stripeGeo, crosswalkMat);
+                            stripeMesh.position.set(
+                                stripeX - centerX,
+                                laneY + 0.01,
+                                centerY - (crosswalkZ + stripeDepth / 2)
+                            );
+                            buildingsGroup.add(stripeMesh);
+                        }
+                    }
+
+                    // ============================================================
+                    // 8. GATE BOOTHS (entry and exit with gate arms)
+                    // Entry lane is on RIGHT (positive X), Exit lane is on LEFT (negative X)
+                    // Booths go on OUTER edges to avoid overlap
+                    // ============================================================
+                    if (hasGateBooth && entryExitType !== 'fullAccess') {
+                        const boothWidth = 6;
+                        const boothDepth = 8;
+                        const boothHeight = 10;
+                        const boothZ = entryExitZ + 15;
+                        const boothGeo = new THREE.BoxGeometry(boothWidth, boothHeight, boothDepth);
+                        const gateArmMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.4 });
+
+                        // TICKET booth (on OUTER right edge of entry lane) - Yellow
+                        const entryBoothMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, roughness: 0.5 });
+                        const entryBoothMesh = new THREE.Mesh(boothGeo, entryBoothMat);
+                        entryBoothMesh.position.set(
+                            entryLabelX + laneWidth / 2 + boothWidth / 2 + 2 - centerX,
+                            boothHeight / 2,
+                            centerY - boothZ
+                        );
+                        entryBoothMesh.castShadow = true;
+                        buildingsGroup.add(entryBoothMesh);
+
+                        // Entry gate arm (red bar) - extends from booth across entry lane
+                        const entryArmGeo = new THREE.BoxGeometry(laneWidth - 2, 0.5, 0.5);
+                        const entryArmMesh = new THREE.Mesh(entryArmGeo, gateArmMat);
+                        entryArmMesh.position.set(
+                            entryLabelX - centerX,
+                            boothHeight / 2 + 1,
+                            centerY - boothZ
+                        );
+                        buildingsGroup.add(entryArmMesh);
+
+                        // PAY booth (on OUTER left edge of exit lane) - Green
+                        const exitBoothMat = new THREE.MeshStandardMaterial({ color: 0x34d399, roughness: 0.5 });
+                        const exitBoothMesh = new THREE.Mesh(boothGeo, exitBoothMat);
+                        exitBoothMesh.position.set(
+                            exitLabelX - laneWidth / 2 - boothWidth / 2 - 2 - centerX,
+                            boothHeight / 2,
+                            centerY - boothZ
+                        );
+                        exitBoothMesh.castShadow = true;
+                        buildingsGroup.add(exitBoothMesh);
+
+                        // Exit gate arm (red bar) - extends from booth across exit lane
+                        const exitArmGeo = new THREE.BoxGeometry(laneWidth - 2, 0.5, 0.5);
+                        const exitArmMesh = new THREE.Mesh(exitArmGeo, gateArmMat);
+                        exitArmMesh.position.set(
+                            exitLabelX - centerX,
+                            boothHeight / 2 + 1,
+                            centerY - boothZ
+                        );
+                        buildingsGroup.add(exitArmMesh);
+
+                        // Booth labels
+                        const ticketLabel = createTextSprite('TICKET', 4, '#fbbf24', '#000000');
+                        ticketLabel.position.set(entryLabelX + laneWidth / 2 + boothWidth / 2 + 2 - centerX, boothHeight + 3, centerY - boothZ);
+                        buildingsGroup.add(ticketLabel);
+
+                        const payLabel = createTextSprite('PAY', 4, '#34d399', '#000000');
+                        payLabel.position.set(exitLabelX - laneWidth / 2 - boothWidth / 2 - 2 - centerX, boothHeight + 3, centerY - boothZ);
+                        buildingsGroup.add(payLabel);
+                    }
+
+                    // ============================================================
+                    // ENTRY/EXIT STANDING SIGNS (3D wayfinding signs)
+                    // Metal posts with green ENTRY and red EXIT signs
+                    // ============================================================
+                    const createStandingSign = (x, z, text, bgColor, textColor = 0xffffff) => {
+                        const signGroup = new THREE.Group();
+
+                        // Metal post
+                        const postHeight = 10;
+                        const postRadius = 0.3;
+                        const postMat = new THREE.MeshStandardMaterial({
+                            color: 0x6b7280, // Gray metal
+                            roughness: 0.4,
+                            metalness: 0.8
+                        });
+                        const postGeo = new THREE.CylinderGeometry(postRadius, postRadius, postHeight, 8);
+                        const postMesh = new THREE.Mesh(postGeo, postMat);
+                        postMesh.position.set(0, postHeight / 2, 0);
+                        postMesh.castShadow = true;
+                        signGroup.add(postMesh);
+
+                        // Sign board (rectangular)
+                        const signWidth = 10;
+                        const signHeight = 4;
+                        const signDepth = 0.3;
+                        const signMat = new THREE.MeshStandardMaterial({
+                            color: bgColor,
+                            roughness: 0.5,
+                            metalness: 0.2
+                        });
+                        const signGeo = new THREE.BoxGeometry(signWidth, signHeight, signDepth);
+                        const signMesh = new THREE.Mesh(signGeo, signMat);
+                        signMesh.position.set(0, postHeight - signHeight / 2 - 0.5, 0);
+                        signMesh.castShadow = true;
+                        signGroup.add(signMesh);
+
+                        // Sign border (white outline)
+                        const borderMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
+                        const borderThickness = 0.2;
+                        // Top border
+                        const topBorderGeo = new THREE.BoxGeometry(signWidth + 0.4, borderThickness, signDepth + 0.1);
+                        const topBorder = new THREE.Mesh(topBorderGeo, borderMat);
+                        topBorder.position.set(0, postHeight - 0.5 - borderThickness / 2, 0);
+                        signGroup.add(topBorder);
+                        // Bottom border
+                        const bottomBorder = new THREE.Mesh(topBorderGeo, borderMat);
+                        bottomBorder.position.set(0, postHeight - signHeight - 0.5 + borderThickness / 2, 0);
+                        signGroup.add(bottomBorder);
+
+                        // Text sprite on sign
+                        const signText = createTextSprite(text, 3, `#${bgColor.toString(16).padStart(6, '0')}`, '#ffffff');
+                        signText.position.set(0, postHeight - signHeight / 2 - 0.5, signDepth / 2 + 0.1);
+                        signGroup.add(signText);
+
+                        // Arrow indicator on sign (pointing up for ENTRY, down for EXIT)
+                        const arrowY = postHeight - signHeight / 2 - 0.5;
+                        const arrowMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                        if (text === 'ENTRY') {
+                            // Up arrow below text
+                            const arrowShape = new THREE.Shape();
+                            arrowShape.moveTo(0, 0.8);
+                            arrowShape.lineTo(0.6, 0);
+                            arrowShape.lineTo(-0.6, 0);
+                            arrowShape.closePath();
+                            const arrowGeo = new THREE.ShapeGeometry(arrowShape);
+                            const arrowMesh = new THREE.Mesh(arrowGeo, arrowMat);
+                            arrowMesh.position.set(0, arrowY - 1.5, signDepth / 2 + 0.15);
+                            signGroup.add(arrowMesh);
+                        } else {
+                            // Down arrow below text
+                            const arrowShape = new THREE.Shape();
+                            arrowShape.moveTo(0, -0.8);
+                            arrowShape.lineTo(0.6, 0);
+                            arrowShape.lineTo(-0.6, 0);
+                            arrowShape.closePath();
+                            const arrowGeo = new THREE.ShapeGeometry(arrowShape);
+                            const arrowMesh = new THREE.Mesh(arrowGeo, arrowMat);
+                            arrowMesh.position.set(0, arrowY - 1.5, signDepth / 2 + 0.15);
+                            signGroup.add(arrowMesh);
+                        }
+
+                        signGroup.position.set(x - centerX, 0, centerY - z);
+                        return signGroup;
+                    };
+
+                    // Place ENTRY sign (outer right edge of entry lane)
+                    const signZ = entryExitZ + laneDepth + 5;
+                    buildingsGroup.add(createStandingSign(
+                        entryLabelX + laneWidth / 2 + 3,
+                        signZ,
+                        'ENTRY',
+                        0x16a34a // Green
+                    ));
+
+                    // Place EXIT sign (outer left edge of exit lane)
+                    buildingsGroup.add(createStandingSign(
+                        exitLabelX - laneWidth / 2 - 3,
+                        signZ,
+                        'EXIT',
+                        0xdc2626 // Red
+                    ));
+                }
+
+                // ============================================================
+                // 9. CROSS-AISLE (center spine for large lots >200ft wide)
+                // Disabled for irregular shapes - bounding box layout doesn't work for L/U shapes
+                // ============================================================
+                if (hasCrossAisle && buildableW > 200 && !isIrregular) {
+                    const crossAisleWidth = aisleWidth;
+                    const crossAisleX = ox + buildableW / 2;
+                    const crossAisleZ = interiorZ;
+                    const crossAisleD = interiorD;
+
+                    // Cross-aisle pavement
+                    const crossAisleMat = new THREE.MeshStandardMaterial({ color: 0x5a5a5a, roughness: 0.85 });
+                    const crossAisleGeo = new THREE.PlaneGeometry(crossAisleWidth, crossAisleD);
+                    crossAisleGeo.rotateX(-Math.PI / 2);
+                    const crossAisleMesh = new THREE.Mesh(crossAisleGeo, crossAisleMat);
+                    crossAisleMesh.position.set(
+                        crossAisleX - centerX,
+                        0.11,
+                        centerY - (crossAisleZ + crossAisleD / 2)
+                    );
+                    buildingsGroup.add(crossAisleMesh);
+
+                    // Center line dashes
+                    const dashMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24 });
+                    const dashLength = 4;
+                    const dashGap = 4;
+                    const dashWidth = 0.5;
+                    const numDashes = Math.floor(crossAisleD / (dashLength + dashGap));
+                    for (let d = 0; d < numDashes; d++) {
+                        const dashZ = crossAisleZ + d * (dashLength + dashGap) + dashLength / 2;
+                        const dashGeo = new THREE.PlaneGeometry(dashWidth, dashLength);
+                        dashGeo.rotateX(-Math.PI / 2);
+                        const dashMesh = new THREE.Mesh(dashGeo, dashMat);
+                        dashMesh.position.set(
+                            crossAisleX - centerX,
+                            stripeY, // Use consistent stripe layer height
+                            centerY - dashZ
+                        );
+                        buildingsGroup.add(dashMesh);
+                    }
+
+                    // ============================================================
+                    // PEDESTRIAN CROSSWALKS (zebra stripes across cross-aisle)
+                    // Located at ends of cross-aisle for safe pedestrian passage
+                    // Controlled by hasCrosswalk setting
+                    // ============================================================
+                    if (hasCrosswalk) {
+                        const crosswalkMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                        const crosswalkStripeW = 2;
+                        const crosswalkStripeH = 8;
+                        const crosswalkGap = 2;
+                        const crosswalkNumStripes = Math.floor(crossAisleWidth / (crosswalkStripeW + crosswalkGap));
+
+                        // Crosswalk at top of cross-aisle
+                        for (let cs = 0; cs < crosswalkNumStripes; cs++) {
+                            const stripeX = crossAisleX - crossAisleWidth / 2 + (cs + 0.5) * (crosswalkStripeW + crosswalkGap);
+                            const stripeGeo = new THREE.PlaneGeometry(crosswalkStripeW, crosswalkStripeH);
+                            stripeGeo.rotateX(-Math.PI / 2);
+                            const stripeMesh = new THREE.Mesh(stripeGeo, crosswalkMat);
+                            stripeMesh.position.set(
+                                stripeX - centerX,
+                                crosswalkY,
+                                centerY - (crossAisleZ + crosswalkStripeH / 2 + 2)
+                            );
+                            buildingsGroup.add(stripeMesh);
+                        }
+
+                        // Crosswalk at bottom of cross-aisle
+                        for (let cs = 0; cs < crosswalkNumStripes; cs++) {
+                            const stripeX = crossAisleX - crossAisleWidth / 2 + (cs + 0.5) * (crosswalkStripeW + crosswalkGap);
+                            const stripeGeo = new THREE.PlaneGeometry(crosswalkStripeW, crosswalkStripeH);
+                            stripeGeo.rotateX(-Math.PI / 2);
+                            const stripeMesh = new THREE.Mesh(stripeGeo, crosswalkMat);
+                            stripeMesh.position.set(
+                                stripeX - centerX,
+                                crosswalkY,
+                                centerY - (crossAisleZ + crossAisleD - crosswalkStripeH / 2 - 2)
+                            );
+                            buildingsGroup.add(stripeMesh);
+                        }
+                    } // End of hasCrosswalk for cross-aisle
+                }
+
+                // ============================================================
+                // 10. PEDESTRIAN CROSSWALKS ON DRIVE AISLES
+                // Zebra stripes at ends of each drive aisle for safe passage
+                // Controlled by hasCrosswalk setting
+                // Crosswalks only placed where loop road exists (left/right edges of interior)
+                // ============================================================
+                if (hasCrosswalk) {
+                    const crosswalkMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                    const crosswalkStripeW = 2;
+                    const crosswalkStripeD = 6;
+                    const crosswalkGap = 2;
+                    const crosswalkHeightLocal = 0.20; // Same as main crosswalkY constant
+
+                    // Add crosswalks at ends of each drive aisle module
+                    for (let m = 0; m < numModules; m++) {
+                        const moduleStartZ = interiorZ + m * moduleDepth;
+                        const aisleZ = moduleStartZ + stallDepth;
+                        const aisleCenterZ = aisleZ + aisleWidth / 2;
+                        const numStripes = Math.floor(aisleWidth / (crosswalkStripeW + crosswalkGap));
+
+                        // For irregular shapes, check if the aisle reaches the loop road edges
+                        // Crosswalks should only appear where the loop road is accessible
+                        let drawLeftCrosswalk = true;
+                        let drawRightCrosswalk = true;
+
+                        if (isIrregular && loopInnerPolygon && loopInnerPolygon.length >= 3) {
+                            const aisleCenterZ_check = aisleZ + effectiveAisleWidth / 2;
+
+                            // Check if left edge of interior is inside the polygon at this Z
+                            // The left crosswalk connects to the loop road at interiorX
+                            const leftEdgePoint = { x: interiorX + 3, y: aisleCenterZ_check };
+                            const leftInInner = isPointInPolygon(leftEdgePoint, loopInnerPolygon);
+                            const leftInOuter = loopOuterPolygon ? isPointInPolygon(leftEdgePoint, loopOuterPolygon) : true;
+                            drawLeftCrosswalk = leftInInner && leftInOuter;
+
+                            // Check if right edge of interior is inside the polygon at this Z
+                            // The right crosswalk connects to the loop road at interiorX + interiorW
+                            const rightEdgePoint = { x: interiorX + interiorW - 3, y: aisleCenterZ_check };
+                            const rightInInner = isPointInPolygon(rightEdgePoint, loopInnerPolygon);
+                            const rightInOuter = loopOuterPolygon ? isPointInPolygon(rightEdgePoint, loopOuterPolygon) : true;
+                            drawRightCrosswalk = rightInInner && rightInOuter;
+                        }
+
+                        // Left end crosswalk (only if loop road is accessible there)
+                        if (drawLeftCrosswalk) {
+                            for (let cs = 0; cs < numStripes; cs++) {
+                                const stripeZ = aisleZ + (cs + 0.5) * (crosswalkStripeW + crosswalkGap) + crosswalkStripeW / 2;
+                                const stripeGeo = new THREE.PlaneGeometry(crosswalkStripeD, crosswalkStripeW);
+                                stripeGeo.rotateX(-Math.PI / 2);
+                                const stripeMesh = new THREE.Mesh(stripeGeo, crosswalkMat);
+                                stripeMesh.position.set(
+                                    interiorX + crosswalkStripeD / 2 + 2 - centerX,
+                                    crosswalkHeightLocal,
+                                    centerY - stripeZ
+                                );
+                                buildingsGroup.add(stripeMesh);
+                            }
+                        }
+
+                        // Right end crosswalk (only if loop road is accessible there)
+                        if (drawRightCrosswalk) {
+                            for (let cs = 0; cs < numStripes; cs++) {
+                                const stripeZ = aisleZ + (cs + 0.5) * (crosswalkStripeW + crosswalkGap) + crosswalkStripeW / 2;
+                                const stripeGeo = new THREE.PlaneGeometry(crosswalkStripeD, crosswalkStripeW);
+                                stripeGeo.rotateX(-Math.PI / 2);
+                                const stripeMesh = new THREE.Mesh(stripeGeo, crosswalkMat);
+                                stripeMesh.position.set(
+                                    interiorX + interiorW - crosswalkStripeD / 2 - 2 - centerX,
+                                    crosswalkHeightLocal,
+                                    centerY - stripeZ
+                                );
+                                buildingsGroup.add(stripeMesh);
+                            }
+                        }
+                    }
+                } // End of hasCrosswalk for drive aisles
+
+            } else if (massingType === 'podium') {
+                // Parking podium: Parking structure with amenity podium
+                const baseAmenityFloors = massingConfig.podiumFloors || 1;
+                const amenityFloorH = massingConfig.podiumHeight || 16;
+                const baseParkingFloors = massingConfig.parkingFloors || 4;
+                const parkingFloorH = massingConfig.floorHeight || 11;
+
+                // Amenity podium base (template building 0)
+                const amenityFloors = individualBuildingParams[0]?.floors ?? baseAmenityFloors;
+                const amenityH = amenityFloors * amenityFloorH;
+                const amenityStartOffset = getStartLevelOffset(0, amenityFloorH);
+                buildingsGroup.add(createBox(ox, oz, buildableW, buildableD * 0.25, amenityH, 0x22c55e, 0, {
+                    paramKey: 'floors',
+                    currentValue: amenityFloors,
+                    minValue: 1,
+                    maxValue: 3,
+                    sensitivity: 35
+                }, null, amenityFloors, 0, true, amenityStartOffset));
+
+                // Parking structure above (template building 1)
+                const parkingFloors = individualBuildingParams[1]?.floors ?? baseParkingFloors;
+                const parkingH = parkingFloors * parkingFloorH;
+                const parkingStructStartOffset = getStartLevelOffset(1, parkingFloorH);
+                buildingsGroup.add(createBox(ox + 10, oz + buildableD * 0.25 + 5, buildableW - 20, buildableD * 0.7, parkingH, podiumColor, 0, {
+                    paramKey: 'floors',
+                    currentValue: parkingFloors,
+                    minValue: 2,
+                    maxValue: 10,
+                    sensitivity: 25
+                }, null, parkingFloors, 1, true, parkingStructStartOffset));
+            } else {
+                // Structured parking (template building 0) - uses individual floors
+                const baseParkingFloors = massingConfig.floors || 5;
+                const parkingFloorH = massingConfig.floorHeight || 11;
+                const parkingFloors = individualBuildingParams[0]?.floors ?? baseParkingFloors;
+                const parkingH = parkingFloors * parkingFloorH;
+                const structuredParkingStartOffset = getStartLevelOffset(0, parkingFloorH);
+                buildingsGroup.add(createBox(ox + 10, oz + 10, buildableW - 20, buildableD - 20, parkingH, podiumColor, 0, {
+                    paramKey: 'floors',
+                    currentValue: parkingFloors,
+                    minValue: 2,
+                    maxValue: 10,
+                    sensitivity: 25
+                }, null, parkingFloors, 0, true, structuredParkingStartOffset));
+            }
+
+        } else {
+            // Default fallback (template building 0) - uses individual floors
+            const baseFloors = massingConfig.floors || 4;
+            const floors = individualBuildingParams[0]?.floors ?? baseFloors;
+            const totalH = floors * floorH;
+            const bldgW = buildableW * Math.sqrt(lotCoverage);
+            const bldgD = buildableD * Math.sqrt(lotCoverage);
+            const offX = (buildableW - bldgW) / 2;
+            const offZ = (buildableD - bldgD) / 2;
+            const defaultStartOffset = getStartLevelOffset(0, floorH);
+            buildingsGroup.add(createBox(ox + offX, oz + offZ, bldgW, bldgD, totalH, buildColor, 0, {
+                paramKey: 'floors',
+                currentValue: floors,
+                minValue: 1,
+                maxValue: 20,
+                sensitivity: 35
+            }, null, floors, 0, true, defaultStartOffset));
+        }
+
+        // =============================================
+        // Render custom free-form placed buildings
+        // =============================================
+        if (customBuildings && customBuildings.length > 0) {
+            customBuildings.forEach((bldg) => {
+                const bldgColor = typeColors[bldg.color] || 0x8b5cf6;
+                const bldgHeight = bldg.floors * (bldg.floorHeight || 10);
+
+                // Create group for building + floor lines
+                const bldgGroup = new THREE.Group();
+
+                if (bldg.type === 'polygon' && bldg.polygon && bldg.polygon.length >= 3) {
+                    // === POLYGON BUILDING (L-shape, custom shape, etc.) ===
+                    const shape = new THREE.Shape();
+                    const firstPt = bldg.polygon[0];
+                    shape.moveTo(firstPt.x - centerX, firstPt.z - centerY);
+                    for (let i = 1; i < bldg.polygon.length; i++) {
+                        const pt = bldg.polygon[i];
+                        shape.lineTo(pt.x - centerX, pt.z - centerY);
+                    }
+                    shape.closePath();
+
+                    // Extrude the shape
+                    const extrudeSettings = {
+                        steps: 1,
+                        depth: bldgHeight,
+                        bevelEnabled: false
+                    };
+                    const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+                    geometry.rotateX(-Math.PI / 2); // Make it vertical
+
+                    const isSelected = bldg.id === selectedBuildingId;
+                    const material = new THREE.MeshStandardMaterial({
+                        color: bldgColor,
+                        roughness: 0.7,
+                        metalness: 0.1,
+                        emissive: isSelected ? 0x2244ff : 0x000000,
+                        emissiveIntensity: isSelected ? 0.3 : 0
+                    });
+                    const mesh = new THREE.Mesh(geometry, material);
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    mesh.userData.customBuildingId = bldg.id;
+                    mesh.userData.isCustomBuilding = true;
+                    bldgGroup.add(mesh);
+
+                    // Add edge outline for better visibility and control
+                    const edgesGeometry = new THREE.EdgesGeometry(geometry);
+                    const edgesMaterial = new THREE.LineBasicMaterial({
+                        color: isSelected ? 0x2244ff : 0x000000,
+                        linewidth: 2,
+                        transparent: true,
+                        opacity: isSelected ? 1.0 : 0.5
+                    });
+                    const edges = new THREE.LineSegments(edgesGeometry, edgesMaterial);
+                    bldgGroup.add(edges);
+
+                    // Add floor level lines for polygon
+                    if (bldg.floors > 1) {
+                        const floorLineHeight = bldg.floorHeight || 10;
+                        const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.5, transparent: true });
+
+                        for (let f = 1; f < bldg.floors; f++) {
+                            const lineY = f * floorLineHeight;
+                            // Match ground plane rotation: site Z -> 3D -Z
+                            const points = bldg.polygon.map(pt => new THREE.Vector3(pt.x - centerX, lineY, centerY - pt.z));
+                            points.push(points[0].clone()); // Close the loop
+                            const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+                            const line = new THREE.Line(lineGeo, lineMaterial);
+                            line.userData.isFloorLine = true;
+                            bldgGroup.add(line);
+                        }
+                    }
+
+                } else {
+                    // === BOX BUILDING (rectangle) ===
+                    const isSelected = bldg.id === selectedBuildingId;
+                    const geometry = new THREE.BoxGeometry(bldg.width, bldgHeight, bldg.depth);
+                    const material = new THREE.MeshStandardMaterial({
+                        color: bldgColor,
+                        roughness: 0.7,
+                        metalness: 0.1,
+                        emissive: isSelected ? 0x2244ff : 0x000000,
+                        emissiveIntensity: isSelected ? 0.3 : 0
+                    });
+                    const mesh = new THREE.Mesh(geometry, material);
+
+                    // Position relative to center - match ground plane rotation
+                    const posX = bldg.x - centerX + bldg.width / 2;
+                    const posY = bldgHeight / 2;
+                    const posZ = centerY - bldg.z - bldg.depth / 2;
+                    mesh.position.set(posX, posY, posZ);
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    mesh.userData.customBuildingId = bldg.id;
+                    mesh.userData.isCustomBuilding = true;
+                    bldgGroup.add(mesh);
+
+                    // Add edge outline for better visibility and control
+                    const edgesGeometry = new THREE.EdgesGeometry(geometry);
+                    const edgesMaterial = new THREE.LineBasicMaterial({
+                        color: isSelected ? 0x2244ff : 0x000000,
+                        linewidth: 2,
+                        transparent: true,
+                        opacity: isSelected ? 1.0 : 0.5
+                    });
+                    const edges = new THREE.LineSegments(edgesGeometry, edgesMaterial);
+                    edges.position.copy(mesh.position);
+                    bldgGroup.add(edges);
+
+                    // Add floor level lines
+                    if (bldg.floors > 1) {
+                        const floorLineHeight = bldg.floorHeight || 10;
+                        const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.5, transparent: true });
+
+                        for (let f = 1; f < bldg.floors; f++) {
+                            const lineY = f * floorLineHeight;
+                            const halfW = bldg.width / 2 + 0.5;
+                            const halfD = bldg.depth / 2 + 0.5;
+
+                            const frontLine = new THREE.BufferGeometry().setFromPoints([
+                                new THREE.Vector3(-halfW, lineY, halfD),
+                                new THREE.Vector3(halfW, lineY, halfD)
+                            ]);
+                            const backLine = new THREE.BufferGeometry().setFromPoints([
+                                new THREE.Vector3(-halfW, lineY, -halfD),
+                                new THREE.Vector3(halfW, lineY, -halfD)
+                            ]);
+                            const leftLine = new THREE.BufferGeometry().setFromPoints([
+                                new THREE.Vector3(-halfW, lineY, -halfD),
+                                new THREE.Vector3(-halfW, lineY, halfD)
+                            ]);
+                            const rightLine = new THREE.BufferGeometry().setFromPoints([
+                                new THREE.Vector3(halfW, lineY, -halfD),
+                                new THREE.Vector3(halfW, lineY, halfD)
+                            ]);
+
+                            [frontLine, backLine, leftLine, rightLine].forEach(geo => {
+                                const line = new THREE.Line(geo, lineMaterial);
+                                line.position.set(posX, 0, posZ);
+                                line.userData.isFloorLine = true;
+                                bldgGroup.add(line);
+                            });
+                        }
+                    }
+                }
+
+                bldgGroup.userData.customBuildingId = bldg.id;
+                bldgGroup.userData.isCustomBuilding = true;
+                buildingsGroup.add(bldgGroup);
+
+                // === Add vertex handles for SELECTED polygon buildings ===
+                if (bldg.id === selectedBuildingId && bldg.type === 'polygon' && bldg.polygon && vertexHandlesGroup) {
+                    // Testfit-style: small flat circles/rings at each vertex
+                    bldg.polygon.forEach((pt, idx) => {
+                        // Create a small ring/torus for each vertex (flat, professional look)
+                        const ringGeo = new THREE.RingGeometry(2, 4, 16);
+                        const ringMaterial = new THREE.MeshBasicMaterial({
+                            color: 0xff6600,
+                            side: THREE.DoubleSide
+                        });
+                        const ring = new THREE.Mesh(ringGeo, ringMaterial);
+                        ring.position.set(pt.x - centerX, bldgHeight + 2, centerY - pt.z);
+                        ring.rotation.x = -Math.PI / 2; // Lay flat
+                        ring.userData = {
+                            isVertexHandle: true,
+                            buildingId: bldg.id,
+                            vertexIndex: idx
+                        };
+                        vertexHandlesGroup.add(ring);
+
+                        // Add a small center dot
+                        const dotGeo = new THREE.CircleGeometry(1.5, 12);
+                        const dotMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+                        const dot = new THREE.Mesh(dotGeo, dotMaterial);
+                        dot.position.set(pt.x - centerX, bldgHeight + 2.1, centerY - pt.z);
+                        dot.rotation.x = -Math.PI / 2;
+                        dot.userData = {
+                            isVertexHandle: true,
+                            buildingId: bldg.id,
+                            vertexIndex: idx
+                        };
+                        vertexHandlesGroup.add(dot);
+                    });
+                }
+            });
+        }
+
+        // =============================================
+        // Render polygon drawing preview
+        // =============================================
+        if (drawingPolygon && drawingPolygon.length > 0) {
+            // Draw points as flat circles (Testfit-style)
+            drawingPolygon.forEach((pt, idx) => {
+                const circleGeo = new THREE.RingGeometry(1.5, 3, 12);
+                const circleMaterial = new THREE.MeshBasicMaterial({ color: 0xcc00ff, side: THREE.DoubleSide });
+                const circle = new THREE.Mesh(circleGeo, circleMaterial);
+                circle.position.set(pt.x - centerX, 2, centerY - pt.z);
+                circle.rotation.x = -Math.PI / 2; // Lay flat
+                buildingsGroup.add(circle);
+            });
+
+            // Draw lines connecting points
+            if (drawingPolygon.length >= 2) {
+                const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff00ff, linewidth: 2 });
+                const points = drawingPolygon.map(pt => new THREE.Vector3(pt.x - centerX, 2, centerY - pt.z));
+                // Close the shape preview if 3+ points
+                if (drawingPolygon.length >= 3) {
+                    points.push(points[0].clone());
+                }
+                const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+                const line = new THREE.Line(lineGeo, lineMaterial);
+                buildingsGroup.add(line);
+            }
+
+            // Show preview extrusion if 3+ points
+            if (drawingPolygon.length >= 3) {
+                const shape = new THREE.Shape();
+                shape.moveTo(drawingPolygon[0].x - centerX, drawingPolygon[0].z - centerY);
+                for (let i = 1; i < drawingPolygon.length; i++) {
+                    shape.lineTo(drawingPolygon[i].x - centerX, drawingPolygon[i].z - centerY);
+                }
+                shape.closePath();
+
+                const extrudeSettings = { steps: 1, depth: 40, bevelEnabled: false }; // Preview height
+                const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+                geometry.rotateX(-Math.PI / 2);
+
+                const material = new THREE.MeshStandardMaterial({
+                    color: 0xff00ff,
+                    transparent: true,
+                    opacity: 0.3,
+                    roughness: 0.7
+                });
+                const mesh = new THREE.Mesh(geometry, material);
+                buildingsGroup.add(mesh);
+            }
+        }
+
+        // Center camera on site - only on first render
+        if (cameraRef.current && controlsRef.current && !initialCameraSetRef.current) {
+            const targetX = 0;
+            const targetZ = 0;
+            controlsRef.current.target.set(targetX, 30, targetZ);
+
+            // Adjust camera distance based on site size
+            const maxDim = Math.max(siteW, siteD);
+            const camDist = maxDim * 1.5;
+            cameraRef.current.position.set(camDist * 0.7, camDist * 0.5, camDist * 0.7);
+            controlsRef.current.update();
+            initialCameraSetRef.current = true;
+        }
+
+    }, [boundary, exclusions, buildingType, massingType, massingConfig, setbacks, lotCoverage, heightLimit, typeColors, onParamChange, customBuildings, drawingPolygon, selectedBuildingId, isDrawingShape, isEditingBoundary, individualBuildingParams, onIndividualBuildingParamChange, templateBuildingPositions, selectedTemplateBuilding]);
+
+    return (
+        <div className="relative w-full h-full" style={{ minHeight: '400px' }}>
+            <div
+                ref={containerRef}
+                className="w-full h-full"
+            />
+
+            {/* Coordinate display overlay (Rhino-like) */}
+            {coordDisplay && (
+                <div
+                    className="absolute pointer-events-none z-50"
+                    style={{
+                        left: coordDisplay.screenX,
+                        top: coordDisplay.screenY,
+                        transform: 'translate(0, -100%)'
+                    }}
+                >
+                    <div className={`px-2 py-1 rounded text-xs font-mono shadow-lg ${coordDisplay.ortho
+                        ? 'bg-cyan-600 text-white'
+                        : 'bg-gray-900 text-white'
+                        }`}>
+                        <span className="text-cyan-300">X:</span> {coordDisplay.x}′
+                        <span className="mx-1">|</span>
+                        <span className="text-green-300">Y:</span> {coordDisplay.y}′
+                        {coordDisplay.ortho && (
+                            <span className="ml-2 text-yellow-300">[ORTHO]</span>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Precision input dialog */}
+            {editingVertex && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/30 z-50">
+                    <div className="bg-white rounded-lg shadow-xl p-4 min-w-[280px]">
+                        <h3 className="text-sm font-semibold text-gray-700 mb-3">
+                            Edit Vertex {editingVertex.index + 1} Position
+                        </h3>
+                        <div className="flex gap-3 mb-4">
+                            <div>
+                                <label className="block text-xs text-gray-500 mb-1">X (feet)</label>
+                                <input
+                                    type="number"
+                                    className="w-24 px-2 py-1 border rounded text-sm font-mono"
+                                    defaultValue={editingVertex.x}
+                                    id="vertex-x-input"
+                                    autoFocus
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs text-gray-500 mb-1">Y (feet)</label>
+                                <input
+                                    type="number"
+                                    className="w-24 px-2 py-1 border rounded text-sm font-mono"
+                                    defaultValue={editingVertex.y}
+                                    id="vertex-y-input"
+                                />
+                            </div>
+                        </div>
+                        <div className="flex gap-2 justify-end">
+                            <button
+                                className="px-3 py-1 text-sm text-gray-600 hover:bg-gray-100 rounded"
+                                onClick={() => setEditingVertex(null)}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                className="px-3 py-1 text-sm bg-cyan-600 text-white rounded hover:bg-cyan-700"
+                                onClick={() => {
+                                    const xInput = document.getElementById('vertex-x-input');
+                                    const yInput = document.getElementById('vertex-y-input');
+                                    if (xInput && yInput && onUpdateBoundaryVertex) {
+                                        onUpdateBoundaryVertex(
+                                            editingVertex.index,
+                                            parseInt(xInput.value, 10) || 0,
+                                            parseInt(yInput.value, 10) || 0
+                                        );
+                                    }
+                                    setEditingVertex(null);
+                                }}
+                            >
+                                Apply
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+});
+
+export default SiteGen3DViewer;

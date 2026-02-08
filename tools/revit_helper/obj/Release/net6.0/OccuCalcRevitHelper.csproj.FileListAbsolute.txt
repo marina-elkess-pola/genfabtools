@@ -1,0 +1,14 @@
+c:\Users\Personal\OneDrive\Desktop\Marina\pytho\website\occupant_calculator\tools\revit_helper\bin\Release\net6.0\OccuCalcRevitHelper.exe
+c:\Users\Personal\OneDrive\Desktop\Marina\pytho\website\occupant_calculator\tools\revit_helper\bin\Release\net6.0\OccuCalcRevitHelper.deps.json
+c:\Users\Personal\OneDrive\Desktop\Marina\pytho\website\occupant_calculator\tools\revit_helper\bin\Release\net6.0\OccuCalcRevitHelper.runtimeconfig.json
+c:\Users\Personal\OneDrive\Desktop\Marina\pytho\website\occupant_calculator\tools\revit_helper\bin\Release\net6.0\OccuCalcRevitHelper.dll
+c:\Users\Personal\OneDrive\Desktop\Marina\pytho\website\occupant_calculator\tools\revit_helper\bin\Release\net6.0\OccuCalcRevitHelper.pdb
+c:\Users\Personal\OneDrive\Desktop\Marina\pytho\website\occupant_calculator\tools\revit_helper\obj\Release\net6.0\OccuCalcRevitHelper.GeneratedMSBuildEditorConfig.editorconfig
+c:\Users\Personal\OneDrive\Desktop\Marina\pytho\website\occupant_calculator\tools\revit_helper\obj\Release\net6.0\OccuCalcRevitHelper.AssemblyInfoInputs.cache
+c:\Users\Personal\OneDrive\Desktop\Marina\pytho\website\occupant_calculator\tools\revit_helper\obj\Release\net6.0\OccuCalcRevitHelper.AssemblyInfo.cs
+c:\Users\Personal\OneDrive\Desktop\Marina\pytho\website\occupant_calculator\tools\revit_helper\obj\Release\net6.0\OccuCalcRevitHelper.csproj.CoreCompileInputs.cache
+c:\Users\Personal\OneDrive\Desktop\Marina\pytho\website\occupant_calculator\tools\revit_helper\obj\Release\net6.0\OccuCalcRevitHelper.dll
+c:\Users\Personal\OneDrive\Desktop\Marina\pytho\website\occupant_calculator\tools\revit_helper\obj\Release\net6.0\refint\OccuCalcRevitHelper.dll
+c:\Users\Personal\OneDrive\Desktop\Marina\pytho\website\occupant_calculator\tools\revit_helper\obj\Release\net6.0\OccuCalcRevitHelper.pdb
+c:\Users\Personal\OneDrive\Desktop\Marina\pytho\website\occupant_calculator\tools\revit_helper\obj\Release\net6.0\OccuCalcRevitHelper.genruntimeconfig.cache
+c:\Users\Personal\OneDrive\Desktop\Marina\pytho\website\occupant_calculator\tools\revit_helper\obj\Release\net6.0\ref\OccuCalcRevitHelper.dll

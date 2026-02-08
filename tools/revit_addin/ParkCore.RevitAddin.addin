@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>ParkCore Revit Addin</Name>
+    <Assembly>ParkCore.RevitAddin.dll</Assembly>
+    <AddInId>8D83F1C9-ABB1-4C0B-9B10-1E394A0B8C2D</AddInId>
+    <VendorId>PCR</VendorId>
+    <VendorDescription>ParkCore</VendorDescription>
+    <FullClassName>ParkCore.RevitAddin.Application</FullClassName>
+  </AddIn>
+  <AddIn Type="Command">
+    <Name>ParkCore Command</Name>
+    <Assembly>ParkCore.RevitAddin.dll</Assembly>
+    <AddInId>0CF6D8E1-8D83-4E27-AE9E-7A23E3B282C5</AddInId>
+    <VendorId>PCR</VendorId>
+    <FullClassName>ParkCore.RevitAddin.Commands.ParkCoreCommand</FullClassName>
+    <Text>ParkCore</Text>
+    <VisibilityMode>AlwaysVisible</VisibilityMode>
+  </AddIn>
+</RevitAddIns>

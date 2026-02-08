@@ -1,0 +1,9 @@
+C:\Users\Personal\OneDrive\Desktop\Marina\pytho\website\occupant_calculator\tools\revit_addin\bin\Release\net48\OccuCalcRevitAddin.dll
+C:\Users\Personal\OneDrive\Desktop\Marina\pytho\website\occupant_calculator\tools\revit_addin\bin\Release\net48\OccuCalcRevitAddin.pdb
+C:\Users\Personal\OneDrive\Desktop\Marina\pytho\website\occupant_calculator\tools\revit_addin\obj\Release\net48\OccuCalcRevit.csproj.AssemblyReference.cache
+C:\Users\Personal\OneDrive\Desktop\Marina\pytho\website\occupant_calculator\tools\revit_addin\obj\Release\net48\OccuCalcRevit.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Personal\OneDrive\Desktop\Marina\pytho\website\occupant_calculator\tools\revit_addin\obj\Release\net48\OccuCalcRevit.AssemblyInfoInputs.cache
+C:\Users\Personal\OneDrive\Desktop\Marina\pytho\website\occupant_calculator\tools\revit_addin\obj\Release\net48\OccuCalcRevit.AssemblyInfo.cs
+C:\Users\Personal\OneDrive\Desktop\Marina\pytho\website\occupant_calculator\tools\revit_addin\obj\Release\net48\OccuCalcRevit.csproj.CoreCompileInputs.cache
+C:\Users\Personal\OneDrive\Desktop\Marina\pytho\website\occupant_calculator\tools\revit_addin\obj\Release\net48\OccuCalcRevitAddin.dll
+C:\Users\Personal\OneDrive\Desktop\Marina\pytho\website\occupant_calculator\tools\revit_addin\obj\Release\net48\OccuCalcRevitAddin.pdb

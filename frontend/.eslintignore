@@ -1,0 +1,13 @@
+# Ignore backups, generated and legacy files that cause noisy lint errors
+
+backups/
+**/*.backup*.jsx
+**/*.user-backup.jsx
+**/backups/**
+_resolve_react.js
+
+# Optional: ignore build artifacts or vendor if present
+
+build/
+static/
+node_modules/

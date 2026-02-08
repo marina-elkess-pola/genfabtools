@@ -1,0 +1,146 @@
+/* Cleaner layout and spacing overrides for OccuCalcTools
+   This file intentionally uses a few !important overrides to improve spacing
+   and reduce visual clutter without needing to modify the large JSX file.
+*/
+:root {
+    --occu-max-width: 1100px;
+    --occu-gap: 14px;
+    --occu-muted: #6b7280;
+    --occu-radius: 10px;
+}
+
+.occu-responsive-container {
+    max-width: var(--occu-max-width) !important;
+    padding: 28px 16px !important;
+}
+
+/* Make header smaller and centered */
+.occu-responsive-container>div img[alt="OccuCalc logo"] {
+    width: 48px !important;
+    height: 48px !important;
+}
+
+.occu-responsive-container h1 {
+    font-size: 2rem !important;
+    margin: 0 !important;
+}
+
+/* Control bar: group controls and add breathing room */
+.occu-responsive-bar {
+    gap: var(--occu-gap) !important;
+    padding: 12px !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+}
+
+.occu-responsive-bar>div,
+.occu-responsive-bar>form {
+    display: flex !important;
+    gap: 10px !important;
+    align-items: center !important;
+}
+
+/* Reduce button visual weight and standardize sizes */
+.occu-responsive-bar button,
+.occu-responsive-bar input[type="button"],
+.occu-responsive-bar select {
+    padding: 8px 10px !important;
+    border-radius: 8px !important;
+    font-size: 13px !important;
+}
+
+/* Make table area less tall and scroll nicely */
+.occu-responsive-grid {
+    grid-template-columns: 1fr 320px !important;
+    gap: 18px !important;
+}
+
+.occu-responsive-table {
+    height: auto !important;
+    min-height: 420px !important;
+    max-height: 72vh !important;
+    overflow: hidden !important;
+}
+
+.occu-responsive-table>div[style] {
+    /* the scroll container in the component */
+    overflow: auto !important;
+    max-height: calc(72vh - 120px) !important;
+}
+
+.occu-responsive-table table {
+    width: 100% !important;
+    border-collapse: separate !important;
+}
+
+.occu-responsive-aside {
+    position: sticky !important;
+    top: 16px !important;
+    align-self: start !important;
+    height: fit-content !important;
+}
+
+/* Tighter list in totals */
+.occu-responsive-aside ul {
+    padding: 0;
+    margin: 0;
+}
+
+.occu-responsive-aside li {
+    padding: 6px 0;
+    display: flex;
+    justify-content: space-between;
+}
+
+/* Shortcut/help and history popover visual improvements */
+#shortcut-help,
+.history-popover {
+    max-width: 920px !important;
+    margin: 12px auto !important;
+    padding: 10px !important;
+}
+
+/* Inputs and selects: consistent spacing */
+.occu-responsive-bar input,
+.occu-responsive-bar select,
+.occu-responsive-table input,
+.occu-responsive-table select {
+    padding: 6px 8px !important;
+    font-size: 13px !important;
+}
+
+/* Reduce clutter on small screens */
+@media (max-width: 760px) {
+    .occu-responsive-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .occu-responsive-aside {
+        order: 2 !important;
+    }
+
+    .occu-responsive-table {
+        order: 1 !important;
+    }
+
+    .occu-responsive-bar {
+        flex-direction: column !important;
+        align-items: stretch !important;
+    }
+}
+
+/* Subtle card style */
+.occu-responsive-container>.occu-card {
+    background: var(--card-bg, #fff) !important;
+    border-radius: var(--occu-radius) !important;
+    box-shadow: 0 6px 18px rgba(12, 18, 26, 0.06) !important;
+}
+
+.occu-card.no-background {
+    background: none !important;
+    background-color: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+}

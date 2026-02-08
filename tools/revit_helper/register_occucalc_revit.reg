@@ -1,0 +1,19 @@
+Windows Registry Editor Version 5.00
+
+; Per-user registration of occucalc-revit protocol (no admin required)
+; Adjust the path to the helper executable before running this .reg file.
+[HKEY_CURRENT_USER\Software\Classes\occucalc-revit]
+@="URL:OccuCalc Revit Protocol"
+"URL Protocol"=""
+
+[HKEY_CURRENT_USER\Software\Classes\occucalc-revit\shell]
+
+[HKEY_CURRENT_USER\Software\Classes\occucalc-revit\shell\open]
+
+[HKEY_CURRENT_USER\Software\Classes\occucalc-revit\shell\open\command]
+@='"C:\\path\\to\\OccuCalcRevitHelper.exe" "%1"'
+
+; Notes:
+; - Replace C:\\path\\to\\OccuCalcRevitHelper.exe with the actual built helper path.
+; - This registers the protocol for the current user only (no admin required).
+; - To remove: delete the occucalc-revit key under HKCU\Software\Classes.

@@ -1,0 +1,12 @@
+OccuCalcTools Snapshot
+Date: 2025-09-29
+Path: frontend/src/OccuCalcTools.jsx
+
+This file is a lightweight snapshot reference pointing to the current implementation of OccuCalcTools.jsx.
+If you need a full source backup, copy frontend/src/OccuCalcTools.jsx to a separate file or commit it in git.
+
+Note: The live source is located at:
+
+  ./frontend/src/OccuCalcTools.jsx
+
+Use this snapshot file as a marker for the "reference" stage taken on 2025-09-29.

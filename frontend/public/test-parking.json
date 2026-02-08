@@ -1,0 +1,189 @@
+{
+    "description": "Test file for interactive parking generator",
+    "elements": [
+        {
+            "type": "polygon",
+            "layer": "floor",
+            "points": [
+                {
+                    "x": 0,
+                    "y": 0
+                },
+                {
+                    "x": 200,
+                    "y": 0
+                },
+                {
+                    "x": 200,
+                    "y": 150
+                },
+                {
+                    "x": 0,
+                    "y": 150
+                }
+            ],
+            "isClosed": true
+        },
+        {
+            "type": "polygon",
+            "layer": "mechanical",
+            "points": [
+                {
+                    "x": 10,
+                    "y": 10
+                },
+                {
+                    "x": 40,
+                    "y": 10
+                },
+                {
+                    "x": 40,
+                    "y": 35
+                },
+                {
+                    "x": 10,
+                    "y": 35
+                }
+            ],
+            "isClosed": true
+        },
+        {
+            "type": "polygon",
+            "layer": "stairs",
+            "points": [
+                {
+                    "x": 160,
+                    "y": 10
+                },
+                {
+                    "x": 190,
+                    "y": 10
+                },
+                {
+                    "x": 190,
+                    "y": 40
+                },
+                {
+                    "x": 160,
+                    "y": 40
+                }
+            ],
+            "isClosed": true
+        },
+        {
+            "type": "polygon",
+            "layer": "elevator",
+            "points": [
+                {
+                    "x": 160,
+                    "y": 110
+                },
+                {
+                    "x": 190,
+                    "y": 110
+                },
+                {
+                    "x": 190,
+                    "y": 140
+                },
+                {
+                    "x": 160,
+                    "y": 140
+                }
+            ],
+            "isClosed": true
+        },
+        {
+            "type": "polygon",
+            "layer": "core",
+            "points": [
+                {
+                    "x": 90,
+                    "y": 65
+                },
+                {
+                    "x": 110,
+                    "y": 65
+                },
+                {
+                    "x": 110,
+                    "y": 85
+                },
+                {
+                    "x": 90,
+                    "y": 85
+                }
+            ],
+            "isClosed": true
+        },
+        {
+            "type": "line",
+            "layer": "wall",
+            "points": [
+                {
+                    "x": 0,
+                    "y": 75
+                },
+                {
+                    "x": 30,
+                    "y": 75
+                }
+            ],
+            "isClosed": false
+        },
+        {
+            "type": "circle",
+            "layer": "column",
+            "center": {
+                "x": 50,
+                "y": 50
+            },
+            "radius": 1.5
+        },
+        {
+            "type": "circle",
+            "layer": "column",
+            "center": {
+                "x": 100,
+                "y": 50
+            },
+            "radius": 1.5
+        },
+        {
+            "type": "circle",
+            "layer": "column",
+            "center": {
+                "x": 150,
+                "y": 50
+            },
+            "radius": 1.5
+        },
+        {
+            "type": "circle",
+            "layer": "column",
+            "center": {
+                "x": 50,
+                "y": 100
+            },
+            "radius": 1.5
+        },
+        {
+            "type": "circle",
+            "layer": "column",
+            "center": {
+                "x": 100,
+                "y": 100
+            },
+            "radius": 1.5
+        },
+        {
+            "type": "circle",
+            "layer": "column",
+            "center": {
+                "x": 150,
+                "y": 100
+            },
+            "radius": 1.5
+        }
+    ]
+}
