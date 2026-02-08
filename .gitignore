@@ -1,10 +1,28 @@
-# Ignore local env files containing secrets
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 .env
-.env.local
-frontend/.env
-frontend/.env.local
-backend/.env
-backend/.env.local
+.venv
+venv/
 
-# You can add other local-only rules here
-node_modules
+# Node / Frontend
+node_modules/
+dist/
+build/
+.vite/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Test artifacts
+test_stall_attach.py
