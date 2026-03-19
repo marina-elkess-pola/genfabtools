@@ -110,10 +110,10 @@ export function SetbackBoundaryLayer({
 
     return (
         <g className="setback-boundary-layer">
-            {/* Setback zone fill (very subtle) */}
+            {/* Setback zone fill */}
             <path
                 d={setbackZonePath}
-                fill="rgba(100, 100, 100, 0.06)"
+                fill="rgba(59, 130, 246, 0.12)"
                 fillRule="evenodd"
                 stroke="none"
             />
@@ -121,11 +121,11 @@ export function SetbackBoundaryLayer({
             <path
                 d={parkablePathData}
                 fill="none"
-                stroke="#888888"
+                stroke="#9CA3AF"
                 strokeWidth={1}
                 strokeDasharray="4 3"
                 strokeLinejoin="round"
-                opacity={0.6}
+                opacity={0.8}
             />
         </g>
     );

@@ -16,113 +16,14 @@ import toolsLogo from './assets/tools-logo-black.png';
 
 const SAMPLE_TOOLS = [
     {
-        id: 'sitegen',
-        title: 'SiteGen',
-        subtitle: 'Real estate feasibility engine',
+        id: 'rsi',
+        title: 'Residential Scheme Intelligence',
         description:
-            'Automated site planning that generates optimized building massing and parking layouts given your site constraints.',
-        longDescription:
-            'SiteGen analyzes your site boundary, zoning constraints, and parking requirements to automatically generate optimal configurations. Test multiple angles, building positions, and parking layouts to maximize unit count and efficiency.',
-        icon: feature3,
-        tags: ['Featured', 'Generator', 'New'],
-        tip: 'Draw your site boundary and set zoning rules to see instant feasibility results.',
-        price: '$49/month',
-        link: '/sitegen',
-    },
-    {
-        id: 'occucalc',
-        title: 'OccuCalc',
-        subtitle: 'Occupancy & load calculator',
-        description:
-            'Efficient occupant load calculator for architects and engineers. Calculate safe occupancy quickly using common code rules.',
-        longDescription:
-            'OccuCalc helps you determine occupant loads by area type, apply multipliers, and export simple reports. Designed for quick estimation and verification during early-stage design.',
-        icon: occuCalcLogo,
-        tags: ['Featured', 'Estimator'],
-        tip: 'Start by entering approximate room areas to get a quick occupant estimate.',
-        price: '$19/month',
-        link: '/occucalc',
-    },
-    {
-        id: 'parking',
-        title: 'Parking Generator',
-        subtitle: 'CAD-integrated smart parking layouts',
-        description: 'Generate optimized parking layouts from CAD files. Import Revit constraints and get AI-powered circulation routes.',
-        longDescription:
-            'Parking Generator analyzes your building constraints (walls, columns, MEP) imported from Revit and automatically generates optimal parking layouts with smart street circulation. Supports surface and structured parking.',
-        icon: parkLogo,
-        tags: ['Featured', 'Generator'],
-        tip: 'Import your Revit floor plan to automatically detect obstacles and generate layouts.',
-        price: '$39/month',
-        link: '/parking',
-    },
-    {
-        id: 'parkcore',
-        title: 'ParkCore',
-        subtitle: 'Parking design assistant',
-        description: 'Advanced parking design and analysis tool. Estimate stalls, circulation, and layout quickly.',
-        icon: parkLogo,
-        tags: ['Beta', 'Analysis'],
-        tip: 'Try the auto-estimate mode for a quick first-pass layout.',
-        price: '$29/month',
-        link: '/parkcore',
-    },
-    {
-        id: 'parking-engine',
-        title: 'Parking Engine',
-        subtitle: 'Early-stage feasibility tool',
-        description: 'Scenario-based parking feasibility analysis. Surface and structured layouts with CAD constraint integration.',
-        longDescription:
-            'Parking Engine is a decision lens for early-stage feasibility. Define sites, import CAD constraints, and instantly evaluate surface or structured parking layouts. Compare scenarios, track constraint impact, and get rule-based capacity estimates.',
-        icon: parkLogo,
-        tags: ['New', 'Feasibility'],
-        tip: 'Create multiple scenarios to compare different configurations.',
-        price: '$39/month',
-        link: '/parking-engine',
-    },
-    {
-        id: 'estimator',
-        title: 'Quick Estimator',
-        subtitle: 'Cost & material estimator',
-        description: 'Fast cost and material estimates for preliminary budgets.',
-        icon: feature1,
-        tags: ['Free'],
-        tip: 'Use the presets to get fast estimates for common project types.',
-        price: 'Free',
-        link: '#',
-    },
-    {
-        id: 'selector',
-        title: 'Material Selector',
-        subtitle: 'Pick materials quickly',
-        description: 'Suggests common materials and finishes based on use-case and cost.',
-        icon: feature2,
-        tags: ['Utility'],
-        tip: 'Filter by performance or cost to narrow suggestions.',
-        price: 'Free',
-        link: '#',
-    },
-    {
-        id: 'exporter',
-        title: 'Export Helper',
-        subtitle: 'Export formats & presets',
-        description: 'Quickly export data into CSV/PDF and presets for sharing with clients.',
-        icon: feature1,
-        tags: ['Export'],
-        tip: 'Use the preset templates to match client deliverable expectations.',
-        price: 'Free',
-        link: '#',
-    },
-    {
-        id: 'tolerance',
-        title: 'Tolerance Checker',
-        subtitle: 'Dimensional checks',
-        description: 'Check common tolerance stacks and quick pass/fail guidance.',
-        icon: feature2,
-        tags: ['Utility'],
-        tip: 'Enter stack dimensions to see quick pass/fail guidance.',
-        price: '$9/month',
-        link: '#',
+            'Analyze residential layouts, diagnose inefficiencies, compare design options, and evaluate financial outcomes directly inside Autodesk Revit.',
+        category: 'Revit Plugin',
+        tags: ['Featured', 'Revit Plugin'],
+        link: '/tools/rsi',
+        icon: '/images/rsi/efficiency-dashboard.png',
     },
 ];
 
@@ -235,18 +136,23 @@ function Tools() {
 
                         {/* Grid */}
                         <section id="tools" className="md:col-span-3">
-                            {/* Featured tool banner (light, uses existing theme) */}
-                            <div className="mb-6 rounded-2xl bg-white dark:bg-slate-900 p-4 shadow-sm border border-slate-100 dark:border-slate-800">
-                                <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center gap-4">
-                                    <div className="flex-shrink-0">
-                                        <img src={occuCalcLogo} alt="OccuCalc" className="w-16 h-16 rounded-md shadow" width="64" height="64" loading="lazy" decoding="async" />
-                                    </div>
+                            {/* Featured tool – RSI */}
+                            <div className="mb-8 rounded-2xl bg-white p-6 shadow-sm border border-slate-100">
+                                <div className="flex flex-col md:flex-row items-center gap-8">
                                     <div className="flex-1">
-                                        <h2 className="text-2xl font-extrabold text-slate-900 dark:text-slate-50">Featured: OccuCalc</h2>
-                                        <p className="mt-1 text-slate-600 dark:text-slate-300">Quick occupant load calculations for early-stage design — fast, code-aware, and exportable.</p>
+                                        <span className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-2 inline-block">Featured Tool</span>
+                                        <h2 className="text-2xl font-extrabold text-slate-900">Residential Scheme Intelligence</h2>
+                                        <p className="mt-3 text-slate-600 leading-relaxed">
+                                            Analyze residential layouts, diagnose inefficiencies, compare design options,
+                                            and evaluate financial outcomes directly inside Autodesk Revit.
+                                        </p>
+                                        <div className="mt-5 flex flex-wrap gap-3">
+                                            <Link to="/tools/rsi" className="inline-flex items-center rounded-md bg-slate-900 text-white px-5 py-2.5 text-sm font-semibold hover:opacity-95">Open Tool</Link>
+                                            <a href="/docs/rsi" className="inline-flex items-center rounded-md border border-slate-200 px-5 py-2.5 text-sm text-slate-800 font-semibold hover:bg-slate-50">Documentation</a>
+                                        </div>
                                     </div>
-                                    <div className="mt-3 sm:mt-0">
-                                        <a href="/occucalc" className="inline-flex items-center gap-3 rounded-md bg-slate-900 text-white px-4 py-2 text-sm font-semibold hover:opacity-95">Open OccuCalc</a>
+                                    <div className="flex-shrink-0 w-full md:w-64">
+                                        <img src="/images/rsi/efficiency-dashboard.png" alt="RSI efficiency dashboard" className="w-full rounded-lg shadow-md" loading="lazy" decoding="async" />
                                     </div>
                                 </div>
                             </div>

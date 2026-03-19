@@ -68,6 +68,48 @@ export class ParkingApiError extends Error {
         super(message);
         this.name = "ParkingApiError";
     }
+
+    /**
+     * Check if this is a V2LayoutError from the backend.
+     * V2LayoutError means: no stalls, no aisles, no metrics should render.
+     */
+    isV2LayoutError(): boolean {
+        if (typeof this.details === 'object' && this.details !== null) {
+            const detail = (this.details as { detail?: string }).detail;
+            if (typeof detail === 'string') {
+                return detail.includes('V2LayoutError') ||
+                    detail.includes('NO_CONNECTED_CIRCULATION') ||
+                    detail.includes('ZERO_STALLS') ||
+                    detail.includes('ZERO_AISLES') ||
+                    detail.includes('NO_CIRCULATION_LOOP');
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Get user-friendly error message for V2 errors.
+     */
+    getV2ErrorMessage(): string {
+        if (!this.isV2LayoutError()) return this.message;
+
+        const detail = (this.details as { detail?: string })?.detail || '';
+
+        if (detail.includes('NO_CONNECTED_CIRCULATION')) {
+            return 'Site too small or invalid for parking circulation';
+        }
+        if (detail.includes('ZERO_STALLS')) {
+            return 'No stalls could be placed on this site';
+        }
+        if (detail.includes('ZERO_AISLES')) {
+            return 'No drive aisles could be generated';
+        }
+        if (detail.includes('NO_CIRCULATION_LOOP')) {
+            return 'Circulation loop could not be created';
+        }
+
+        return 'Parking layout could not be generated';
+    }
 }
 
 // =============================================================================

@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RSI Documentation — Residential Scheme Intelligence</title>
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: #1e1e1e;
+            background: #f7f8fa;
+            line-height: 1.7;
+        }
+
+        /* ─── Top bar ─── */
+        header {
+            background: #1a1a2e;
+            color: #fff;
+            padding: 16px 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, .15);
+        }
+
+        header .wrap {
+            max-width: 1120px;
+            margin: 0 auto;
+            padding: 0 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        header .brand {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: .3px;
+        }
+
+        header .brand span {
+            color: #5e9eff;
+        }
+
+        header nav a {
+            color: #cbd5e1;
+            text-decoration: none;
+            margin-left: 28px;
+            font-size: 14px;
+            transition: color .15s;
+        }
+
+        header nav a:hover {
+            color: #fff;
+        }
+
+        /* ─── Layout ─── */
+        .page {
+            max-width: 1120px;
+            margin: 0 auto;
+            padding: 0 24px;
+            display: flex;
+            gap: 40px;
+        }
+
+        /* ─── Sidebar ─── */
+        aside {
+            width: 220px;
+            flex-shrink: 0;
+            padding: 32px 0;
+            position: sticky;
+            top: 64px;
+            align-self: flex-start;
+            height: calc(100vh - 64px);
+            overflow-y: auto;
+        }
+
+        aside h4 {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #94a3b8;
+            margin-bottom: 12px;
+        }
+
+        aside a {
+            display: block;
+            color: #475569;
+            text-decoration: none;
+            font-size: 14px;
+            padding: 5px 12px;
+            border-left: 3px solid transparent;
+            transition: all .15s;
+        }
+
+        aside a:hover,
+        aside a.active {
+            color: #1a1a2e;
+            border-left-color: #3b82f6;
+            background: #e8edf4;
+        }
+
+        /* ─── Main content ─── */
+        main {
+            flex: 1;
+            min-width: 0;
+            padding: 40px 0 80px;
+        }
+
+        .hero {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            border-radius: 10px;
+            padding: 48px 40px;
+            margin-bottom: 40px;
+        }
+
+        .hero h1 {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .hero p {
+            font-size: 16px;
+            color: #94a3b8;
+            max-width: 600px;
+        }
+
+        .hero .badge {
+            display: inline-block;
+            background: rgba(59, 130, 246, .25);
+            color: #93bbfc;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 3px 10px;
+            border-radius: 4px;
+            margin-bottom: 14px;
+        }
+
+        section {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 36px 40px;
+            margin-bottom: 28px;
+        }
+
+        section h2 {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e2e8f0;
+            color: #1a1a2e;
+        }
+
+        section h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin: 20px 0 8px;
+            color: #334155;
+        }
+
+        section p,
+        section li {
+            font-size: 15px;
+            color: #374151;
+        }
+
+        section p {
+            margin-bottom: 12px;
+        }
+
+        section ul,
+        section ol {
+            margin: 0 0 16px 20px;
+        }
+
+        section li {
+            margin-bottom: 6px;
+        }
+
+        code {
+            background: #f1f5f9;
+            color: #be185d;
+            font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+            font-size: 13px;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        pre {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 18px 20px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 12px 0 16px;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        pre code {
+            background: none;
+            color: inherit;
+            padding: 0;
+        }
+
+        .step-list {
+            counter-reset: step;
+            list-style: none;
+            padding: 0;
+            margin: 0 0 16px;
+        }
+
+        .step-list li {
+            counter-increment: step;
+            padding: 10px 0 10px 48px;
+            position: relative;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .step-list li:last-child {
+            border-bottom: none;
+        }
+
+        .step-list li::before {
+            content: counter(step);
+            position: absolute;
+            left: 0;
+            top: 10px;
+            width: 30px;
+            height: 30px;
+            background: #3b82f6;
+            color: #fff;
+            font-size: 14px;
+            font-weight: 700;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .callout {
+            border-left: 4px solid #3b82f6;
+            background: #eff6ff;
+            padding: 14px 18px;
+            border-radius: 0 6px 6px 0;
+            margin: 16px 0;
+            font-size: 14px;
+            color: #1e40af;
+        }
+
+        .callout.warn {
+            border-left-color: #f59e0b;
+            background: #fffbeb;
+            color: #92400e;
+        }
+
+        .callout.error {
+            border-left-color: #ef4444;
+            background: #fef2f2;
+            color: #991b1b;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0 16px;
+            font-size: 14px;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 10px 14px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        th {
+            background: #f8fafc;
+            font-weight: 600;
+            color: #334155;
+        }
+
+        /* ─── Footer ─── */
+        footer {
+            text-align: center;
+            padding: 40px 24px;
+            font-size: 13px;
+            color: #94a3b8;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        footer a {
+            color: #3b82f6;
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            aside {
+                display: none;
+            }
+
+            .hero {
+                padding: 32px 24px;
+            }
+
+            .hero h1 {
+                font-size: 24px;
+            }
+
+            section {
+                padding: 24px 20px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <div class="wrap">
+            <div class="brand"><span>RSI</span> &mdash; Documentation</div>
+            <nav>
+                <a href="#installation">Installation</a>
+                <a href="#quick-start">Quick Start</a>
+                <a href="#heatmap">Heatmap</a>
+                <a href="#comparison">Comparison</a>
+                <a href="#export">Export</a>
+                <a href="#troubleshooting">Troubleshooting</a>
+            </nav>
+        </div>
+    </header>
+
+    <div class="page">
+        <aside>
+            <h4>On this page</h4>
+            <a href="#installation">Installation</a>
+            <a href="#quick-start">Quick Start</a>
+            <a href="#heatmap">Heatmap Analysis</a>
+            <a href="#comparison">Scheme Comparison</a>
+            <a href="#export">Export Reports</a>
+            <a href="#troubleshooting">Troubleshooting</a>
+        </aside>
+
+        <main>
+            <div class="hero">
+                <div class="badge">v1.0.0</div>
+                <h1>Residential Scheme Intelligence</h1>
+                <p>Analyze residential scheme efficiency, visualize performance diagnostics, compare design
+                    alternatives, and export professional reports &mdash; all inside Autodesk Revit.</p>
+            </div>
+
+            <!-- ────────────────────── 1. Installation ────────────────────── -->
+            <section id="installation">
+                <h2>1. Installation</h2>
+                <p>RSI is distributed as a standalone Windows installer. No manual file copying is required.</p>
+
+                <h3>System Requirements</h3>
+                <ul>
+                    <li>Autodesk Revit 2024</li>
+                    <li>Windows 10 or later (64-bit)</li>
+                    <li>.NET Framework 4.8</li>
+                </ul>
+
+                <h3>Install Steps</h3>
+                <ol class="step-list">
+                    <li><strong>Close Revit</strong> if it is currently running.</li>
+                    <li>Run <code>RSI_Setup.exe</code>. The installer requires administrator privileges to write to the
+                        shared Revit Addins folder.</li>
+                    <li>Follow the on-screen prompts. The installer places all plugin files into:<br>
+                        <code>C:\ProgramData\Autodesk\Revit\Addins\2024\</code>
+                    </li>
+                    <li>Launch Revit. A new <strong>GenFabTools</strong> tab will appear in the ribbon with the
+                        <strong>RSI</strong> button.</li>
+                </ol>
+
+                <div class="callout">
+                    On first launch, RSI will prompt you to enter a license key and display a welcome dialog.
+                </div>
+
+                <h3>Uninstalling</h3>
+                <p>Open <strong>Settings &rarr; Apps &amp; Features</strong>, find <em>Residential Scheme
+                        Intelligence</em>, and click <strong>Uninstall</strong>. All plugin files will be removed.</p>
+            </section>
+
+            <!-- ────────────────────── 2. Quick Start ────────────────────── -->
+            <section id="quick-start">
+                <h2>2. Quick Start</h2>
+                <p>Follow these steps to run your first analysis:</p>
+
+                <ol class="step-list">
+                    <li>
+                        <strong>Open an Area Plan</strong><br>
+                        RSI works exclusively with Revit Area Plans. Open an existing Area Plan view or create one via
+                        <em>Architecture &rarr; Area Plan</em>. The active view must be an Area Plan for analysis to
+                        proceed.
+                    </li>
+                    <li>
+                        <strong>Assign RSI Categories</strong><br>
+                        Each area in your plan needs an <code>RSI_Category</code> classification. Categories include:
+                        <table>
+                            <tr>
+                                <th>Category</th>
+                                <th>Description</th>
+                            </tr>
+                            <tr>
+                                <td>Net Sellable</td>
+                                <td>Residential units, private amenity</td>
+                            </tr>
+                            <tr>
+                                <td>Core</td>
+                                <td>Stairs, lifts, risers, lobbies</td>
+                            </tr>
+                            <tr>
+                                <td>Circulation</td>
+                                <td>Corridors, hallways, shared access routes</td>
+                            </tr>
+                            <tr>
+                                <td>Parking</td>
+                                <td>Vehicle parking areas</td>
+                            </tr>
+                            <tr>
+                                <td>Amenity</td>
+                                <td>Shared resident amenities (gym, lounge)</td>
+                            </tr>
+                            <tr>
+                                <td>BOH</td>
+                                <td>Back-of-house, plant rooms, storage</td>
+                            </tr>
+                        </table>
+                        You can assign categories manually or use RSI's <strong>Auto-Classify</strong> feature.
+                    </li>
+                    <li>
+                        <strong>Click Analyze Project</strong><br>
+                        Click the <strong>RSI</strong> button in the GenFabTools ribbon tab. The dockable panel opens on
+                        the right with a full breakdown of your scheme metrics: Gross Area, Net Sellable Area, Core,
+                        Circulation, and the resulting <strong>Efficiency Ratio</strong>.
+                    </li>
+                </ol>
+
+                <div class="callout">
+                    Use the <strong>Scope</strong> dropdown to analyze the active Area Plan or all Area Plans in the
+                    project.
+                </div>
+            </section>
+
+            <!-- ────────────────────── 3. Heatmap ────────────────────── -->
+            <section id="heatmap">
+                <h2>3. Heatmap Analysis</h2>
+                <p>The Performance Diagnosis heatmap provides an immediate visual layer over your Area Plan,
+                    highlighting areas that negatively impact scheme efficiency.</p>
+
+                <h3>How It Works</h3>
+                <p>When you activate the heatmap via the <strong>Show Heatmap</strong> button in the Analyze tab, RSI
+                    creates color-coded <code>FilledRegion</code> overlays directly on your view:</p>
+
+                <table>
+                    <tr>
+                        <th>Color</th>
+                        <th>Meaning</th>
+                    </tr>
+                    <tr>
+                        <td><span
+                                style="display:inline-block;width:14px;height:14px;background:rgb(220,60,60);border-radius:3px;vertical-align:middle;margin-right:6px;"></span>
+                            Red</td>
+                        <td><strong>Core Over-Allocation</strong> &mdash; Core areas exceed the benchmark threshold for
+                            the selected building type.</td>
+                    </tr>
+                    <tr>
+                        <td><span
+                                style="display:inline-block;width:14px;height:14px;background:rgb(230,175,45);border-radius:3px;vertical-align:middle;margin-right:6px;"></span>
+                            Amber</td>
+                        <td><strong>Circulation Over-Allocation</strong> &mdash; Circulation space is disproportionately
+                            large relative to Net Sellable area.</td>
+                    </tr>
+                </table>
+
+                <h3>Clearing the Heatmap</h3>
+                <p>Click <strong>Clear Heatmap</strong> to remove all RSI-generated FilledRegions (identified by the
+                    <code>RSI_Heatmap_</code> prefix). The underlying areas are unaffected.</p>
+
+                <div class="callout warn">
+                    The heatmap overlays are view-specific. Switching to a different Area Plan will not carry heatmap
+                    data across views. Re-analyze and re-apply as needed.
+                </div>
+            </section>
+
+            <!-- ────────────────────── 4. Scheme Comparison ────────────────────── -->
+            <section id="comparison">
+                <h2>4. Scheme Comparison</h2>
+                <p>RSI lets you save analysis snapshots and compare design alternatives side by side.</p>
+
+                <h3>Saving a Scheme</h3>
+                <ol>
+                    <li>Run an analysis on your current design.</li>
+                    <li>Switch to the <strong>Compare</strong> tab.</li>
+                    <li>Enter a name (e.g., <em>Option A &mdash; Dual Core</em>) and click <strong>Save Scheme</strong>.
+                    </li>
+                </ol>
+                <p>The snapshot captures Gross Area, Net Sellable, Core, Circulation, Efficiency, and per-category area
+                    counts at that moment. Saved schemes are stored in the Revit project via Extensible Storage, so they
+                    persist with the model file.</p>
+
+                <h3>Comparing Schemes</h3>
+                <ol>
+                    <li>Select <strong>Scheme A</strong> and <strong>Scheme B</strong> from the dropdowns.</li>
+                    <li>Click <strong>Compare</strong>.</li>
+                </ol>
+                <p>RSI displays a delta table showing the difference in every metric between the two saved schemes,
+                    making it straightforward to evaluate which layout performs better.</p>
+
+                <div class="callout">
+                    Comparison reads stored values only &mdash; it never recalculates from the live model. This ensures
+                    you are comparing the exact state at the time each scheme was saved.
+                </div>
+            </section>
+
+            <!-- ────────────────────── 5. Export Reports ────────────────────── -->
+            <section id="export">
+                <h2>5. Export Reports</h2>
+                <p>RSI supports three export formats, each generated from the cached analysis data.</p>
+
+                <table>
+                    <tr>
+                        <th>Format</th>
+                        <th>Contents</th>
+                        <th>Use Case</th>
+                    </tr>
+                    <tr>
+                        <td><strong>Excel (.xlsx)</strong></td>
+                        <td>Four worksheets: Current Analysis, Category Breakdown, Saved Schemes, Comparison</td>
+                        <td>Detailed data analysis, client reporting, further spreadsheet work</td>
+                    </tr>
+                    <tr>
+                        <td><strong>PDF</strong></td>
+                        <td>Formatted multi-page report with summary metrics and category tables</td>
+                        <td>Stakeholder presentations, design reviews, printable reports</td>
+                    </tr>
+                    <tr>
+                        <td><strong>CSV</strong></td>
+                        <td>Flat comma-separated values of key metrics</td>
+                        <td>Data interchange, import into other tools</td>
+                    </tr>
+                </table>
+
+                <h3>Exporting</h3>
+                <ol>
+                    <li>Ensure an analysis has been run (the Analyze tab shows results).</li>
+                    <li>Click the export button for your desired format.</li>
+                    <li>Choose a save location in the file dialog. Default filenames include a timestamp (e.g.,
+                        <code>RSI_Report_20260317.xlsx</code>).</li>
+                </ol>
+
+                <div class="callout">
+                    Exports read from cached data and do not trigger a new analysis. If you have modified the model
+                    since the last analysis, click <strong>Re-Analyze</strong> first to refresh the data.
+                </div>
+            </section>
+
+            <!-- ────────────────────── 6. Troubleshooting ────────────────────── -->
+            <section id="troubleshooting">
+                <h2>6. Troubleshooting</h2>
+
+                <h3>Heatmap Not Showing</h3>
+                <ul>
+                    <li>Ensure you are viewing an <strong>Area Plan</strong>. Heatmap overlays are created as
+                        FilledRegions on the active Area Plan view and will not appear in floor plans or 3D views.</li>
+                    <li>Check that an analysis has been run first. The heatmap button is only active after results are
+                        available.</li>
+                    <li>Verify that the active view's Visibility/Graphics has <strong>Filled Regions</strong> enabled
+                        (category must be visible).</li>
+                    <li>If a previous heatmap is stuck, click <strong>Clear Heatmap</strong> and then <strong>Show
+                            Heatmap</strong> again.</li>
+                </ul>
+
+                <h3>Areas Not Categorized</h3>
+                <ul>
+                    <li>RSI reads the <code>RSI_Category</code> parameter on each Area element. If this parameter is
+                        missing or empty, the area will appear as <em>Unassigned</em>.</li>
+                    <li>Use <strong>Auto-Classify</strong> to let RSI assign categories based on area naming
+                        conventions.</li>
+                    <li>For manual assignment, select one or more areas in Revit and use the category assignment
+                        controls in the RSI panel.</li>
+                    <li>Click <strong>Highlight Unclassified</strong> to visually locate areas that still need a
+                        category.</li>
+                </ul>
+
+                <h3>Export Not Working</h3>
+                <ul>
+                    <li>Ensure an analysis has been completed before exporting. If the panel shows no results, click
+                        <strong>RSI</strong> in the ribbon to analyze first.</li>
+                    <li>If saving an Excel file fails, make sure the target <code>.xlsx</code> file is not already open
+                        in another application.</li>
+                    <li>Check that you have write permissions to the chosen save location.</li>
+                    <li>For PDF exports, ensure PdfSharp.dll is present alongside the main plugin DLL. Reinstalling via
+                        <code>RSI_Setup.exe</code> will restore any missing files.</li>
+                </ul>
+
+                <div class="callout error">
+                    If issues persist, visit <a href="https://genfabtools.com/help">genfabtools.com/help</a> or email <a
+                        href="mailto:support@genfabtools.com">support@genfabtools.com</a>.
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <footer>
+        &copy; 2026 GenFabTools &mdash; <a href="https://genfabtools.com">genfabtools.com</a> &nbsp;|&nbsp; <a
+            href="https://genfabtools.com/support">Support</a> &nbsp;|&nbsp; <a
+            href="https://genfabtools.com/download">Downloads</a>
+    </footer>
+
+</body>
+
+</html>

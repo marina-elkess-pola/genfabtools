@@ -65,17 +65,13 @@ interface V2CanvasLayerProps {
 // Colors
 // =============================================================================
 
-const STALL_FILL = "#32CD32";      // Lime green for angled stalls (more visible)
-const STALL_STROKE = "#006400";    // Dark green stroke
-const AISLE_FILL = "#B0C4DE";      // Light steel blue for aisles
-const AISLE_STROKE = "#4682B4";    // Steel blue stroke
-const LOOP_POLYGON_FILL = "#C4D7E8";  // Actual loop polygon fill (slightly darker)
-const LOOP_POLYGON_STROKE = "#5A7A99"; // Loop polygon stroke
-const ARROW_COLOR = "#333333";
-const SPINE_COLOR = "#FF6600";     // Orange for circulation loop centerline debug
-const CENTERLINE_COLOR = "#9933FF"; // Purple for aisle arrows
-const NORMAL_COLOR = "#FF0066";    // Magenta for stall normals
-const UTURN_COLOR = "#00CCFF";     // Cyan for U-turn arcs
+const STALL_FILL = "#334155";
+const STALL_STROKE = "#1E293B";
+const AISLE_FILL = "#E5E7EB";
+const AISLE_STROKE = "#D1D5DB";
+const LOOP_POLYGON_FILL = "#E5E7EB";
+const LOOP_POLYGON_STROKE = "#D1D5DB";
+const ARROW_COLOR = "#6B7280";
 
 // =============================================================================
 // Helpers
@@ -209,157 +205,8 @@ export function V2CanvasLayer({
     viewport,
     canvasHeight,
 }: V2CanvasLayerProps): React.ReactElement {
-    // DEV PROOF LOG — REMOVE BEFORE PRODUCTION
-    console.log("🎨 V2CanvasLayer RENDERING", {
-        stallCount: v2Stalls?.length ?? 0,
-        aisleCount: v2Aisles?.length ?? 0,
-        hasDebugGeometry: !!v2DebugGeometry,
-        firstStall: v2Stalls?.[0] ? {
-            id: v2Stalls[0].id,
-            angle: v2Stalls[0].angle,
-            pointCount: v2Stalls[0].geometry?.points?.length ?? 0,
-            points: v2Stalls[0].geometry?.points,
-        } : null,
-    });
-
-    // Helper to create loop polyline path (prefer loop_polyline, fallback to spine_polyline)
-    const createLoopPath = (): string => {
-        const polyline = v2DebugGeometry?.loop_polyline ?? v2DebugGeometry?.spine_polyline;
-        if (!polyline || polyline.length < 2) {
-            return "";
-        }
-        const screenPoints = polyline.map(([x, y]) =>
-            worldToScreen({ x, y }, viewport, canvasHeight)
-        );
-        return screenPoints.map((p, i) =>
-            i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`
-        ).join(" ");
-    };
-
-    // Get the polyline for rendering check
-    const loopPolyline = v2DebugGeometry?.loop_polyline ?? v2DebugGeometry?.spine_polyline;
-    const aisleArrows = v2DebugGeometry?.aisle_arrows ?? v2DebugGeometry?.aisle_centerlines;
-    const hasLoopPolygon = v2DebugGeometry?.loop_polygon_outer && v2DebugGeometry.loop_polygon_outer.length >= 3;
-    const aisleWidth = v2DebugGeometry?.aisle_width;
-    const circMode = v2DebugGeometry?.circulation_mode;
-
     return (
         <g className="v2-canvas-layer">
-            {/* DEV DEBUG: Visible indicator that V2 layer is rendering */}
-            <rect x="10" y="10" width="280" height="40" fill="rgba(50,205,50,0.9)" stroke="#006400" strokeWidth="2" />
-            <text x="20" y="35" fill="#006400" fontSize="14" fontWeight="bold">
-                {`V2: ${v2Stalls?.length ?? 0} stalls | ${circMode ?? "?"}: ${aisleWidth ?? "?"}ft${hasLoopPolygon ? " (poly)" : ""}`}
-            </text>
-
-            {/* Debug: Circulation Loop Centerline (thick orange line) - for debug only */}
-            {loopPolyline && loopPolyline.length >= 2 && (
-                <path
-                    d={createLoopPath()}
-                    fill="none"
-                    stroke={SPINE_COLOR}
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeDasharray="8,4"
-                    opacity={0.6}
-                />
-            )}
-
-            {/* Debug: U-Turn Arcs (cyan circles) */}
-            {v2DebugGeometry?.u_turn_arcs?.map(([cx, cy, radius], i) => {
-                const center = worldToScreen({ x: cx, y: cy }, viewport, canvasHeight);
-                const screenRadius = radius * viewport.zoom;
-                return (
-                    <circle
-                        key={`uturn-${i}`}
-                        cx={center.x}
-                        cy={center.y}
-                        r={screenRadius}
-                        fill="none"
-                        stroke={UTURN_COLOR}
-                        strokeWidth={2}
-                        strokeDasharray="4,2"
-                        opacity={0.7}
-                    />
-                );
-            })}
-
-            {/* Debug: Aisle Direction Arrows (purple lines with arrowheads) */}
-            {aisleArrows?.map((arrow, i) => {
-                const [[x1, y1], [x2, y2]] = arrow;
-                const start = worldToScreen({ x: x1, y: y1 }, viewport, canvasHeight);
-                const end = worldToScreen({ x: x2, y: y2 }, viewport, canvasHeight);
-                // Create arrowhead for direction
-                const dx = end.x - start.x;
-                const dy = end.y - start.y;
-                const len = Math.sqrt(dx * dx + dy * dy);
-                if (len < 1) return null;
-                const nx = dx / len;
-                const ny = dy / len;
-                const headLen = 6;
-                const headWidth = 3;
-                return (
-                    <g key={`aisle-arrow-${i}`}>
-                        <line
-                            x1={start.x}
-                            y1={start.y}
-                            x2={end.x}
-                            y2={end.y}
-                            stroke={CENTERLINE_COLOR}
-                            strokeWidth={2}
-                            opacity={0.8}
-                        />
-                        <polygon
-                            points={`
-                                ${end.x},${end.y}
-                                ${end.x - headLen * nx - headWidth * ny},${end.y - headLen * ny + headWidth * nx}
-                                ${end.x - headLen * nx + headWidth * ny},${end.y - headLen * ny - headWidth * nx}
-                            `}
-                            fill={CENTERLINE_COLOR}
-                            opacity={0.8}
-                        />
-                    </g>
-                );
-            })}
-
-            {/* Debug: Stall Normals (magenta arrows) */}
-            {v2DebugGeometry?.stall_normals?.map((arrow, i) => {
-                const [[x1, y1], [x2, y2]] = arrow;
-                const start = worldToScreen({ x: x1, y: y1 }, viewport, canvasHeight);
-                const end = worldToScreen({ x: x2, y: y2 }, viewport, canvasHeight);
-                // Create arrowhead
-                const dx = end.x - start.x;
-                const dy = end.y - start.y;
-                const len = Math.sqrt(dx * dx + dy * dy);
-                if (len < 1) return null;
-                const nx = dx / len;
-                const ny = dy / len;
-                const headLen = 4;
-                const headWidth = 2;
-                return (
-                    <g key={`normal-${i}`}>
-                        <line
-                            x1={start.x}
-                            y1={start.y}
-                            x2={end.x}
-                            y2={end.y}
-                            stroke={NORMAL_COLOR}
-                            strokeWidth={1.5}
-                            opacity={0.7}
-                        />
-                        <polygon
-                            points={`
-                                ${end.x},${end.y}
-                                ${end.x - headLen * nx - headWidth * ny},${end.y - headLen * ny + headWidth * nx}
-                                ${end.x - headLen * nx + headWidth * ny},${end.y - headLen * ny - headWidth * nx}
-                            `}
-                            fill={NORMAL_COLOR}
-                            opacity={0.7}
-                        />
-                    </g>
-                );
-            })}
-
             {/* Render aisles first (behind stalls) */}
             {/* PRIORITY: Use loop_polygon_outer/inner when available (actual geometry) */}
             {/* Otherwise fall back to v2Aisles individual rectangles */}
@@ -380,17 +227,6 @@ export function V2CanvasLayer({
                             fillRule="evenodd"
                             opacity={0.85}
                         />
-                        {/* Display aisle width for verification */}
-                        {v2DebugGeometry.aisle_width && (
-                            <text
-                                x={worldToScreen({ x: v2DebugGeometry.loop_polygon_outer[0][0], y: v2DebugGeometry.loop_polygon_outer[0][1] }, viewport, canvasHeight).x + 5}
-                                y={worldToScreen({ x: v2DebugGeometry.loop_polygon_outer[0][0], y: v2DebugGeometry.loop_polygon_outer[0][1] }, viewport, canvasHeight).y - 5}
-                                fill="#333"
-                                fontSize="10"
-                            >
-                                {`${v2DebugGeometry.circulation_mode || "?"}: ${v2DebugGeometry.aisle_width} ft`}
-                            </text>
-                        )}
                     </g>
                 ) : (
                     // Fallback: render individual aisle rectangles from v2Aisles
@@ -462,7 +298,7 @@ export function V2CanvasLayer({
                             stroke={STALL_STROKE}
                             strokeWidth={0.5}
                             strokeLinejoin="round"
-                            opacity={0.85}
+                            opacity={0.8}
                         />
                     );
                 })}

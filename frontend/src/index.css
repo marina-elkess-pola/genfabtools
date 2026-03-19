@@ -20,8 +20,12 @@
 
 /* Enable smooth scrolling for in-page anchor navigation */
 html {
-  scroll-behavior: smooth;
   height: 100%;
+}
+
+/* Ensure anchored sections land cleanly below any fixed headers */
+[id] {
+  scroll-margin-top: 0;
 }
 
 a {
@@ -36,8 +40,10 @@ a:hover {
 
 body {
   margin: 0;
+  padding: 0;
   min-width: 320px;
   height: 100%;
+  overflow-x: hidden;
   background-color: #fbfbfc;
   /* very light */
   color: #213547;

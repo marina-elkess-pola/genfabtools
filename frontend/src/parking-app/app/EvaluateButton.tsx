@@ -52,7 +52,10 @@ export function EvaluateButton() {
 
             let message = "Evaluation failed";
             if (err instanceof ParkingApiError) {
-                message = err.message;
+                // Use V2-specific error message if applicable
+                message = err.isV2LayoutError()
+                    ? err.getV2ErrorMessage()
+                    : err.message;
             } else if (err instanceof Error) {
                 message = err.message;
             }

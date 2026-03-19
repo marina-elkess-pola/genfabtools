@@ -18,13 +18,13 @@ import type {
 // =============================================================================
 
 export const CONSTRAINT_COLORS: Record<ConstraintType, string> = {
-    COLUMN: "#8B4513", // Brown
-    CORE: "#4169E1", // Royal Blue
-    WALL: "#696969", // Dim Gray
-    MEP_ROOM: "#9932CC", // Dark Orchid
-    SHAFT: "#2F4F4F", // Dark Slate Gray
-    VOID: "#DC143C", // Crimson
-    UNKNOWN: "#808080", // Gray
+    COLUMN: "#DC2626",
+    CORE: "#DC2626",
+    WALL: "#DC2626",
+    MEP_ROOM: "#DC2626",
+    SHAFT: "#DC2626",
+    VOID: "#DC2626",
+    UNKNOWN: "#DC2626",
 };
 
 export const CONSTRAINT_LABELS: Record<ConstraintType, string> = {
@@ -42,10 +42,10 @@ export const CONSTRAINT_LABELS: Record<ConstraintType, string> = {
 // =============================================================================
 
 export const STALL_COLORS = {
-    standard: "#4CAF50", // Green
-    compact: "#8BC34A", // Light Green
-    ada: "#2196F3", // Blue
-    ada_van: "#1976D2", // Dark Blue
+    standard: "#334155",
+    compact: "#334155",
+    ada: "#2563EB",
+    ada_van: "#2563EB",
 } as const;
 
 // =============================================================================
@@ -64,16 +64,16 @@ export const ZONE_COLORS = {
 // =============================================================================
 
 export const CANVAS_COLORS = {
-    siteBoundary: "#1a1a2e",
-    siteBoundaryFill: "rgba(26, 26, 46, 0.05)",
-    aisle: "#9E9E9E",
-    aisleFill: "rgba(158, 158, 158, 0.3)",
-    ramp: "#FF9800",
-    rampFill: "rgba(255, 152, 0, 0.3)",
-    core: "#3F51B5",
-    coreFill: "rgba(63, 81, 181, 0.3)",
-    grid: "#E0E0E0",
-    background: "#FAFAFA",
+    siteBoundary: "#111827",
+    siteBoundaryFill: "rgba(17, 24, 39, 0.03)",
+    aisle: "#E5E7EB",
+    aisleFill: "rgba(229, 231, 235, 0.6)",
+    ramp: "#9CA3AF",
+    rampFill: "rgba(156, 163, 175, 0.3)",
+    core: "#6B7280",
+    coreFill: "rgba(107, 114, 128, 0.3)",
+    grid: "#E5E7EB",
+    background: "#F9FAFB",
 } as const;
 
 // =============================================================================

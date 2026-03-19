@@ -442,19 +442,19 @@ interface LayerControlsProps {
 
 // Layer definitions with associated colors for visual identification
 const LAYER_DEFINITIONS = [
-    { key: "siteBoundary", label: "Site", color: "#1a1a2e", style: "solid" },
-    { key: "constraints", label: "Constraints", color: "#8B4513", style: "solid" },
-    { key: "stalls", label: "Stalls", color: "#4CAF50", style: "solid" },
-    { key: "aisles", label: "Aisles", color: "#9E9E9E", style: "solid" },
-    { key: "ramps", label: "Ramps", color: "#FF9800", style: "solid" },
-    { key: "cores", label: "Cores", color: "#3F51B5", style: "solid" },
+    { key: "siteBoundary", label: "Site", color: "#111827", style: "solid" },
+    { key: "constraints", label: "Constraints", color: "#DC2626", style: "solid" },
+    { key: "stalls", label: "Stalls", color: "#334155", style: "solid" },
+    { key: "aisles", label: "Aisles", color: "#E5E7EB", style: "solid" },
+    { key: "ramps", label: "Ramps", color: "#9CA3AF", style: "solid" },
+    { key: "cores", label: "Cores", color: "#6B7280", style: "solid" },
 ] as const;
 
 // Stall type legend for expanded view
 const STALL_LEGEND = [
-    { label: "Standard", color: "#4CAF50" },
-    { label: "ADA", color: "#2196F3" },
-    { label: "Van ADA", color: "#1976D2" },
+    { label: "Standard", color: "#334155" },
+    { label: "ADA", color: "#2563EB" },
+    { label: "Van ADA", color: "#2563EB" },
 ] as const;
 
 function LayerControls({ visibility, onToggle }: LayerControlsProps) {
@@ -775,8 +775,6 @@ export function ParkingCanvas() {
         if (!activeScenario?.siteBoundary) return;
 
         const siteBounds = calculateBounds(activeScenario.siteBoundary);
-        // DEBUG INSTRUMENTATION — REMOVE BEFORE PRODUCTION
-        console.warn("[V1 DEBUG] Auto-fit useEffect — V1 (raw site bounds)", { siteBounds });
 
         const viewport = fitBoundsToViewport(
             siteBounds,
@@ -820,13 +818,6 @@ export function ParkingCanvas() {
         // Fallback to site bounds if no v2 aisle data yet
         const targetBounds = v2Bounds || calculateBounds(activeScenario.siteBoundary);
 
-        // DEBUG INSTRUMENTATION — REMOVE BEFORE PRODUCTION
-        console.warn("[V2 DEBUG] Auto-fit useEffect — V2 (v2Aisles bounds)", {
-            hasV2Aisles: v2Aisles.length > 0,
-            v2Bounds,
-            targetBounds,
-        });
-
         const viewport = fitBoundsToViewport(
             targetBounds,
             dimensions.width,
@@ -867,11 +858,6 @@ export function ParkingCanvas() {
                     targetBounds = calculateBounds({ points: allPoints });
                 }
             }
-            // DEBUG INSTRUMENTATION — REMOVE BEFORE PRODUCTION
-            console.warn("[V2 DEBUG] handleFitToView — V2 (v2Aisles bounds)", { targetBounds });
-        } else {
-            // DEBUG INSTRUMENTATION — REMOVE BEFORE PRODUCTION
-            console.warn("[V1 DEBUG] handleFitToView — V1 (raw site bounds)", { targetBounds });
         }
 
         const newViewport = fitBoundsToViewport(
@@ -1046,13 +1032,6 @@ export function ParkingCanvas() {
             const v2AislesRaw = resultAny.v2Aisles || [];
             const v2DebugGeometry = resultAny.v2DebugGeometry || null;
 
-            // DEBUG INSTRUMENTATION — REMOVE BEFORE PRODUCTION
-            console.log("[V2 ONLY] Extracting V2 geometry", {
-                v2StallCount: v2StallsRaw.length,
-                v2AisleCount: v2AislesRaw.length,
-                hasDebugGeometry: !!v2DebugGeometry,
-            });
-
             return {
                 stalls: [], // V1 stalls NOT extracted when isV2
                 aisles: [], // V1 aisles NOT extracted when isV2
@@ -1070,7 +1049,6 @@ export function ParkingCanvas() {
         // ======================================================================
         // V1 MODE: Extract ONLY v1 geometry, ignore v2 paths entirely
         // ======================================================================
-        console.log("[V1 ONLY] Extracting V1 geometry");
 
         if (result.type === "surface") {
             const stalls: Stall[] = [];

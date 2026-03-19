@@ -19,15 +19,15 @@ import React from "react";
 import type { Aisle, ViewportState, Point, CirculationMode, FlowDirection } from "../../types";
 import { worldToScreen } from "../../utils";
 
-// DEV overlay colors - highly visible for debugging
+// Aisle overlay colors
 const DEV_AISLE_COLORS = {
-    fill: "rgba(0, 255, 255, 0.35)",      // Cyan, 35% opacity
-    stroke: "#00FFFF",                     // Cyan stroke
-    strokeWidth: 2,
-    arrowFill: "#00FFFF",                  // Cyan arrow
-    arrowStroke: "#004444",                // Dark teal outline
-    twoWayFill: "rgba(128, 255, 128, 0.25)", // Light green for two-way
-    twoWayStroke: "#00FF00",               // Green for two-way
+    fill: "rgba(229, 231, 235, 0.5)",
+    stroke: "#D1D5DB",
+    strokeWidth: 1,
+    arrowFill: "#6B7280",
+    arrowStroke: "#4B5563",
+    twoWayFill: "rgba(229, 231, 235, 0.4)",
+    twoWayStroke: "#E5E7EB",
 };
 
 interface DevAisleOverlayProps {
@@ -158,32 +158,14 @@ export function DevAisleOverlay({
     canvasHeight,
     isV2Active,
 }: DevAisleOverlayProps) {
-    // DEBUG INSTRUMENTATION — REMOVE BEFORE PRODUCTION
-    console.warn("[V2 DEBUG] DevAisleOverlay (V2) RENDERED");
 
     // Only render in DEV mode with v2 active
     if (!isV2Active || aisles.length === 0) {
         return null;
     }
 
-    // Count one-way vs two-way for badge
-    const oneWayCount = aisles.filter(a => a.circulation !== "TWO_WAY").length;
-    const twoWayCount = aisles.length - oneWayCount;
-
     return (
         <g className="dev-aisle-overlay">
-            {/* DEV badge */}
-            <text
-                x={10}
-                y={20}
-                fill="#00FFFF"
-                fontSize={12}
-                fontFamily="monospace"
-                fontWeight="bold"
-            >
-                DEV: v2 Aisles ({aisles.length}) | 1-way: {oneWayCount} | 2-way: {twoWayCount}
-            </text>
-
             {aisles.map((aisle) => {
                 const { geometry, id, circulation } = aisle;
 

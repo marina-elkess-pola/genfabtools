@@ -75,9 +75,6 @@ export function AislesLayer({
     canvasHeight,
     onAisleHover,
 }: AislesLayerProps) {
-    // DEBUG INSTRUMENTATION — REMOVE BEFORE PRODUCTION
-    console.warn("[V2 DEBUG] AislesLayer (V1) RENDERED");
-
     const handleMouseEnter = useCallback((aisle: Aisle) => {
         if (!onAisleHover) return;
         const { geometry } = aisle;

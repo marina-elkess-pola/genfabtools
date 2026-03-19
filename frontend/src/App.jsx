@@ -18,6 +18,7 @@ const About = lazy(() => import('./About'));
 const Contact = lazy(() => import('./Contact'));
 const FAQ = lazy(() => import('./FAQ'));
 const Account = lazy(() => import('./Account'));
+const Support = lazy(() => import('./Support'));
 import Layout from './components/Layout';
 
 function HomeMain() {
@@ -37,89 +38,139 @@ function HomeMain() {
 
   return (
     <div className="pt-0">
-      {/* Full-bleed responsive hero that adapts to viewport height */}
-      <section className="relative -mx-0 sm:-mx-6 lg:-mx-8 w-full">
-        <div className="relative w-full h-screen sm:h-[80vh] md:h-[90vh] lg:h-screen overflow-hidden">
-          {/* Video covers the full hero area and preserves aspect ratio.
+      {/* Full-bleed hero: 100vw × 100vh, no white borders */}
+      <section className="relative w-screen h-screen overflow-hidden">
+        {/* Video covers the full hero area and preserves aspect ratio.
               Lazy-load the MP4 to avoid fetching heavy media on initial load. */}
-          {/* Setup a ref and IntersectionObserver to set the `src` only when near viewport */}
-          {(() => {
-            const videoRef = useRef(null);
-            useEffect(() => {
-              const vid = videoRef.current;
-              if (!vid) return;
-              // If already loaded or no IntersectionObserver support, set src immediately
-              if (!('IntersectionObserver' in window)) {
-                if (!vid.src) vid.src = '/genfabtools-logo-animation.mp4';
-                return;
-              }
+        {/* Setup a ref and IntersectionObserver to set the `src` only when near viewport */}
+        {(() => {
+          const videoRef = useRef(null);
+          useEffect(() => {
+            const vid = videoRef.current;
+            if (!vid) return;
+            // If already loaded or no IntersectionObserver support, set src immediately
+            if (!('IntersectionObserver' in window)) {
+              if (!vid.src) vid.src = '/genfabtools-logo-animation.mp4';
+              return;
+            }
 
-              const io = new IntersectionObserver(
-                (entries) => {
-                  entries.forEach((entry) => {
-                    if (entry.isIntersecting) {
-                      if (!vid.src) vid.src = '/genfabtools-logo-animation.mp4';
-                      io.disconnect();
-                    }
-                  });
-                },
-                { rootMargin: '200px' }
-              );
-
-              io.observe(vid);
-              return () => io.disconnect();
-            }, []);
-
-            return (
-              <video
-                ref={videoRef}
-                src="/genfabtools-logo-animation.mp4"
-                poster="/genfabtools-logo.png"
-                preload="none"
-                autoPlay
-                loop
-                muted
-                playsInline
-                className="absolute inset-0 w-full h-full object-cover"
-                aria-hidden="true"
-              >
-                {/* Explicit src plus <source> ensures the animation loads across environments. */}
-                <source src="/genfabtools-logo-animation.mp4" type="video/mp4" />
-              </video>
+            const io = new IntersectionObserver(
+              (entries) => {
+                entries.forEach((entry) => {
+                  if (entry.isIntersecting) {
+                    if (!vid.src) vid.src = '/genfabtools-logo-animation.mp4';
+                    io.disconnect();
+                  }
+                });
+              },
+              { rootMargin: '200px' }
             );
-          })()}
 
-          {/* Optional subtle overlay for contrast */}
-          <div className="absolute inset-0 bg-black/25 dark:bg-black/50" />
+            io.observe(vid);
+            return () => io.disconnect();
+          }, []);
 
-          {/* Centered content */}
-          <div className="absolute inset-0 z-10 flex items-center justify-center px-4">
-            <div className="text-center max-w-4xl">
-              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold text-white drop-shadow-md">
-                Design with confidence <span className="text-white/90">| GenFab</span>
-              </h1>
+          return (
+            <video
+              ref={videoRef}
+              src="/genfabtools-logo-animation.mp4"
+              poster="/genfabtools-logo.png"
+              preload="none"
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="absolute inset-0 w-full h-full object-cover"
+              aria-hidden="true"
+            >
+              {/* Explicit src plus <source> ensures the animation loads across environments. */}
+              <source src="/genfabtools-logo-animation.mp4" type="video/mp4" />
+            </video>
+          );
+        })()}
 
-              <div className="mt-6 flex items-center justify-center gap-3">
-                <button
-                  onClick={toggleDropdown}
-                  className="rounded-md bg-white/10 hover:bg-white/12 text-white dark:text-slate-900 px-3 py-1.5 flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 active:shadow-none"
-                  aria-expanded={isDropdownOpen}
-                  aria-label="Open menu"
-                >
-                  {/* Use public SVG for crisp scaling */}
-                  <img src="/genfabtools-logo.png" alt="GenFab Tools" loading="lazy" decoding="async" className="h-6 sm:h-8 md:h-10 w-auto" />
-                </button>
-              </div>
+        {/* Dark gradient overlay for text readability */}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/20 to-black/50" />
 
-              {isDropdownOpen && (
-                <div className="mt-4 bg-white/10 dark:bg-white/10 backdrop-blur-sm rounded-md shadow p-4 mx-auto w-64 max-w-full text-slate-900 dark:text-white">
-                  <DropdownLink to="/tools">Tools</DropdownLink>
-                  <DropdownLink to="/about">About</DropdownLink>
-                  <DropdownLink to="/contact">Contact</DropdownLink>
-                  <DropdownLink to="/faq">FAQ</DropdownLink>
-                </div>
-              )}
+        {/* Centered content — no container background, text sits directly on video */}
+        <div className="absolute inset-0 z-10 flex items-center justify-center px-6">
+          <div className="text-center">
+            <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold text-white drop-shadow-lg tracking-tight leading-tight">
+              Smarter tools for modern workflows.
+            </h1>
+
+            <p className="mt-10 text-base sm:text-lg md:text-xl text-white/75 font-light leading-relaxed mx-auto" style={{ maxWidth: '650px' }}>
+              GenFabTools is a platform for intelligent utilities that simplify complex workflows across design, engineering, fabrication, and analysis.
+            </p>
+
+            <div className="mt-12 flex items-center justify-center gap-5 flex-wrap">
+              <button
+                onClick={() => {
+                  const el = document.getElementById('platform-overview');
+                  if (!el) return;
+                  const start = window.scrollY;
+                  const end = el.getBoundingClientRect().top + start - 60;
+                  const duration = 1000;
+                  let startTime = null;
+                  function ease(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+                  function step(ts) {
+                    if (!startTime) startTime = ts;
+                    const progress = Math.min((ts - startTime) / duration, 1);
+                    window.scrollTo(0, start + (end - start) * ease(progress));
+                    if (progress < 1) requestAnimationFrame(step);
+                  }
+                  requestAnimationFrame(step);
+                }}
+                className="rounded-xl bg-white text-slate-900 font-bold px-10 py-4 text-base sm:text-lg shadow-2xl hover:bg-white/95 hover:scale-[1.02] transition-all duration-200 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-black/50"
+              >
+                Explore Tools
+              </button>
+              <Link
+                to="/about"
+                className="rounded-xl border border-white/30 text-white/80 font-normal px-9 py-4 text-base sm:text-lg hover:bg-white/10 hover:text-white transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-black/50"
+              >
+                Learn More
+              </Link>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Platform Overview — transition section */}
+      <section id="platform-overview" className="px-6" style={{ background: 'linear-gradient(to bottom, #f9fafb, #ffffff)', paddingTop: '120px', paddingBottom: '120px' }}>
+        <div className="max-w-3xl mx-auto text-center">
+          <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">
+            A growing ecosystem of intelligent tools
+          </h2>
+          <p className="mt-6 text-lg text-slate-600 leading-relaxed mx-auto" style={{ maxWidth: '620px' }}>
+            GenFabTools brings together purpose-built utilities for architects, engineers, and planners — each designed to automate tedious tasks and surface better decisions faster.
+          </p>
+        </div>
+      </section>
+
+      {/* Tools section */}
+      <section id="tools-section" className="bg-white dark:bg-slate-900 px-6" style={{ paddingTop: '120px', paddingBottom: '120px' }}>
+        <div className="max-w-5xl mx-auto text-center">
+          <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white">Our Tools</h2>
+          <p className="mt-4 text-lg text-slate-600 dark:text-slate-400 mx-auto" style={{ maxWidth: '600px' }}>
+            Purpose-built utilities for architecture, engineering, and site planning.
+          </p>
+          <div className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+            <Link to="/sitegen" className="group rounded-2xl border border-slate-200 dark:border-slate-700 p-8 text-left hover:shadow-lg transition-shadow duration-200">
+              <h3 className="text-xl font-semibold text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">SiteGen</h3>
+              <p className="mt-2 text-slate-500 dark:text-slate-400 text-sm">Automated site planning with optimized building massing and parking layouts.</p>
+            </Link>
+            <Link to="/occucalc" className="group rounded-2xl border border-slate-200 dark:border-slate-700 p-8 text-left hover:shadow-lg transition-shadow duration-200">
+              <h3 className="text-xl font-semibold text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">OccuCalc</h3>
+              <p className="mt-2 text-slate-500 dark:text-slate-400 text-sm">Occupant load calculator for architects and engineers using common code rules.</p>
+            </Link>
+            <Link to="/parkcore" className="group rounded-2xl border border-slate-200 dark:border-slate-700 p-8 text-left hover:shadow-lg transition-shadow duration-200">
+              <h3 className="text-xl font-semibold text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">ParkCore</h3>
+              <p className="mt-2 text-slate-500 dark:text-slate-400 text-sm">Generate optimized parking layouts from site boundaries with smart circulation.</p>
+            </Link>
+          </div>
+          <div className="mt-10">
+            <Link to="/tools" className="text-blue-600 dark:text-blue-400 font-medium hover:underline">View all tools &rarr;</Link>
           </div>
         </div>
       </section>
@@ -195,6 +246,10 @@ function App() {
         <Route
           path="/purchase/verify"
           element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Verifying…</div>}><PurchaseVerify /></Suspense></Layout>}
+        />
+        <Route
+          path="/support"
+          element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading…</div>}><Support /></Suspense></Layout>}
         />
       </Routes>
     </>

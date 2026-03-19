@@ -12,7 +12,7 @@ import type { Stall, ViewportState, Polygon, Point } from "../../types";
 import { worldToScreen, STALL_COLORS } from "../../utils";
 
 /** Access aisle styling - diagonal stripes pattern */
-const ACCESS_AISLE_COLOR = "#4A90D9";  // Blue to match ADA stall
+const ACCESS_AISLE_COLOR = "#2563EB";
 const ACCESS_AISLE_STRIPE_COLOR = "#FFFFFF";
 
 interface StallsLayerProps {
@@ -90,9 +90,6 @@ export function StallsLayer({
     viewport,
     canvasHeight,
 }: StallsLayerProps) {
-    // DEBUG INSTRUMENTATION — REMOVE BEFORE PRODUCTION
-    console.warn("[V2 DEBUG] StallsLayer (V1) RENDERED");
-
     const [hoveredStall, setHoveredStall] = useState<StallTooltipData | null>(null);
 
     const handleMouseEnter = useCallback((stall: Stall) => {
@@ -162,13 +159,6 @@ export function StallsLayer({
             {stalls.map((stall) => {
                 const { geometry, stallType, id, accessAisle } = stall;
 
-                // DEBUG INSTRUMENTATION — REMOVE BEFORE PRODUCTION
-                console.log("[V2 FRONTEND DEBUG] Stall geometry", {
-                    id: stall.id,
-                    hasPoints: !!stall.geometry?.points,
-                    pointCount: stall.geometry?.points?.length
-                });
-
                 if (geometry.points.length < 3) {
                     return null;
                 }
@@ -197,7 +187,7 @@ export function StallsLayer({
                             stroke="#ffffff"
                             strokeWidth={0.5}
                             strokeLinejoin="round"
-                            opacity={0.85}
+                            opacity={0.8}
                             style={{ cursor: "pointer" }}
                             onMouseEnter={() => handleMouseEnter(stall)}
                             onMouseLeave={handleMouseLeave}
