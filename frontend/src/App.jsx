@@ -20,6 +20,18 @@ const FAQ = lazy(() => import('./FAQ'));
 const Account = lazy(() => import('./Account'));
 const Support = lazy(() => import('./Support'));
 import Layout from './components/Layout';
+import { useLocation } from "react-router-dom";
+
+// 🔥 SCROLL FIX COMPONENT
+function ScrollToTop() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+
+  return null;
+}
 
 function HomeMain() {
   const [isDropdownOpen, setDropdownOpen] = useState(false);
@@ -181,6 +193,9 @@ function HomeMain() {
 function App() {
   return (
     <>
+      {/* ✅ THIS FIXES YOUR ISSUE */}
+      <ScrollToTop />
+
       <Routes>
         <Route path="/" element={<HomeMain />} />
 
@@ -192,6 +207,18 @@ function App() {
         <Route
           path="/tools"
           element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading tools…</div>}><Tools /></Suspense></Layout>}
+        />
+
+        {/* 🔥 ADD THIS (VERY IMPORTANT) */}
+        <Route
+          path="/tools/:id"
+          element={
+            <Layout showHero={false}>
+              <div className="p-8 text-center text-xl">
+                Tool Page (dynamic) — replace later
+              </div>
+            </Layout>
+          }
         />
 
         <Route
@@ -223,30 +250,37 @@ function App() {
           path="/register"
           element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading…</div>}><Register /></Suspense></Layout>}
         />
+
         <Route
           path="/about"
           element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading…</div>}><About /></Suspense></Layout>}
         />
+
         <Route
           path="/contact"
           element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading…</div>}><Contact /></Suspense></Layout>}
         />
+
         <Route
           path="/faq"
           element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading…</div>}><FAQ /></Suspense></Layout>}
         />
+
         <Route
           path="/login"
           element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading…</div>}><Login /></Suspense></Layout>}
         />
+
         <Route
           path="/account"
           element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading account…</div>}><Account /></Suspense></Layout>}
         />
+
         <Route
           path="/purchase/verify"
           element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Verifying…</div>}><PurchaseVerify /></Suspense></Layout>}
         />
+
         <Route
           path="/support"
           element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading…</div>}><Support /></Suspense></Layout>}

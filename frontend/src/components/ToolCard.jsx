@@ -18,7 +18,10 @@ export default function ToolCard({ tool }) {
 
       {/* CLICKABLE BODY */}
       <div
-        onClick={() => navigate(`/tools/${tool.id}`)}
+        onClick={() => {
+          navigate(`/tools/${tool.id}`);
+          window.scrollTo(0, 0);
+        }}
         className="flex flex-col flex-1 p-6 cursor-pointer"
       >
         {/* IMAGE */}
