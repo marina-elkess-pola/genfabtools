@@ -19,6 +19,7 @@ const Contact = lazy(() => import('./Contact'));
 const FAQ = lazy(() => import('./FAQ'));
 const Account = lazy(() => import('./Account'));
 const Support = lazy(() => import('./Support'));
+const RSI = lazy(() => import('./RSI'));
 import Layout from './components/Layout';
 import { useLocation } from "react-router-dom";
 
@@ -211,12 +212,12 @@ function App() {
 
         {/* 🔥 ADD THIS (VERY IMPORTANT) */}
         <Route
-          path="/tools/:id"
+          path="/tools/rsi"
           element={
             <Layout showHero={false}>
-              <div className="p-8 text-center text-xl">
-                Tool Page (dynamic) — replace later
-              </div>
+              <Suspense fallback={<div className="p-8 text-center">Loading…</div>}>
+                <RSI />
+              </Suspense>
             </Layout>
           }
         />
