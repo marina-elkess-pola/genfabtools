@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import OccuCalcTools from './OccuCalcTools.jsx';
 import PurchaseButton from './components/PurchaseButton';
 
@@ -109,13 +110,11 @@ export default function OccuCalc() {
                     <h2 className="text-2xl font-bold">Create a free account to try OccuCalc</h2>
                     <p className="mt-4">OccuCalc requires a free GenFabTools account. Create an account to store your tools and purchases.</p>
                     <div className="mt-6">
-                        <button
-                            onClick={() => {
-                                localStorage.setItem('postAuthRedirect', '/occucalc');
-                                window.location.href = '/register';
-                            }}
+                        <Link
+                            to="/register"
+                            onClick={() => localStorage.setItem('postAuthRedirect', '/occucalc')}
                             className="inline-flex items-center gap-2 rounded-md bg-blue-600 text-white px-4 py-2 text-sm font-semibold"
-                        >Create free account</button>
+                        >Create free account</Link>
                     </div>
                 </div>
             );

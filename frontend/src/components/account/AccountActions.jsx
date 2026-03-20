@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 
 export default function AccountActions({ user, onSignOut }) {
     return (
@@ -6,21 +7,21 @@ export default function AccountActions({ user, onSignOut }) {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="flex gap-3">
                     {!user?.paid ? (
-                        <a
-                            href="/purchase"
+                        <Link
+                            to="/purchase"
                             className="inline-flex items-center rounded-md bg-slate-900 text-white px-4 py-2 text-sm font-semibold shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 transition transform duration-150 hover:-translate-y-1 hover:shadow-md hover:!text-white"
                         >
                             Get access
-                        </a>
+                        </Link>
                     ) : (
-                        <a href="/purchase/manage" className="inline-flex items-center rounded-md border px-4 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300">Manage subscription</a>
+                        <Link to="/purchase/manage" className="inline-flex items-center rounded-md border px-4 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300">Manage subscription</Link>
                     )}
-                    <a
-                        href="/support"
+                    <Link
+                        to="/support"
                         className="inline-flex items-center rounded-md bg-white text-slate-900 border border-slate-200 px-4 py-2 text-sm hover:bg-slate-100 dark:bg-slate-800 dark:text-white dark:border-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 transition transform duration-150 hover:-translate-y-1 hover:shadow-md hover:!text-slate-900 dark:hover:!text-white"
                     >
                         Contact support
-                    </a>
+                    </Link>
                 </div>
 
                 <div className="flex gap-2">

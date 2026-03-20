@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import ProfileCard from './components/account/ProfileCard';
 import PurchasesList from './components/account/PurchasesList';
 import AccountActions from './components/account/AccountActions';
@@ -52,7 +52,7 @@ export default function Account() {
             <h2 className="text-xl font-semibold">Account</h2>
             <p className="mt-4 text-sm text-rose-600">{error}</p>
             <div className="mt-6">
-                <button onClick={() => navigate('/login')} className="inline-flex items-center rounded-md border px-3 py-2">Sign in</button>
+                <Link to="/login" className="inline-flex items-center rounded-md border px-3 py-2">Sign in</Link>
             </div>
         </div>
     );

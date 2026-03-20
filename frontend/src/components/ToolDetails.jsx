@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 
 export default function ToolDetails({ tool, onClose }) {
   if (!tool) return null;
@@ -25,7 +26,7 @@ export default function ToolDetails({ tool, onClose }) {
           </div>
 
           <div className="mt-6">
-            <a href={tool.link || '#'} className="inline-block px-4 py-2 bg-slate-900 text-white rounded-md hover:bg-slate-700">Open Tool</a>
+            <Link to={tool.link || '#'} className="inline-block px-4 py-2 bg-slate-900 text-white rounded-md hover:bg-slate-700">Open Tool</Link>
           </div>
         </div>
       </aside>

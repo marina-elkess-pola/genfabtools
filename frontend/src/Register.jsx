@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 
 export default function Register() {
     const [email, setEmail] = useState('');
@@ -89,7 +89,7 @@ export default function Register() {
 
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                     <button type="submit" disabled={loading} style={{ background: "#2563eb", color: "#fff", borderRadius: 8, padding: "10px 20px", fontWeight: 600, border: "none", cursor: "pointer" }}>{loading ? 'Creating…' : 'Create account'}</button>
-                    <button type="button" onClick={() => navigate('/login')} style={{ background: '#eee', borderRadius: 8, padding: '10px 16px', border: '1px solid #ddd' }}>Have an account? Log in</button>
+                    <Link to="/login" style={{ background: '#eee', borderRadius: 8, padding: '10px 16px', border: '1px solid #ddd', textDecoration: 'none', color: 'inherit' }}>Have an account? Log in</Link>
                 </div>
 
                 {error && <div style={{ marginTop: 12, color: 'crimson' }}>{error}</div>}

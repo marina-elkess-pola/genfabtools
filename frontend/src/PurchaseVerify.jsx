@@ -30,7 +30,7 @@ export default function PurchaseVerify() {
                     // Save return location (so register/login will bring user back here)
                     try { localStorage.setItem('postAuthRedirect', window.location.pathname + window.location.search); } catch (e) { /* ignore */ }
                     // Redirect user to register/login so they can complete verification
-                    window.location.href = '/register';
+                    navigate('/register');
                     return;
                 }
 
