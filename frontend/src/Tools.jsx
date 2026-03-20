@@ -12,7 +12,7 @@ const SAMPLE_TOOLS = [
         tags: ['Featured', 'Revit Plugin'],
         link: 'https://genfabtools.com/download/RSI_Setup.exe',
         docs: 'https://genfabtools.com/docs/rsi/index.html',
-        icon: '/images/rsi/RSI32.png',
+        icon: '/images/rsi/RSI1080.png',
 
         // ✅ PRICING (FIXED)
         priceMonthly: 49,
