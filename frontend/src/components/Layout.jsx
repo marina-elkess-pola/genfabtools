@@ -51,111 +51,74 @@ function useBodyLock(open) {
 }
 
 function Header({ scrolled, onToggleTheme, theme, currentBrand, onToggleMenu }) {
-  // header link classes are used inline for clarity; helpers removed to avoid unused-vars
-  const [user, setUser] = useState(null);
+  const location = useLocation();
 
-  // Try to fetch the current user when a token is present so the header can show
-  // a small "Signed in as …" indicator. Mirror the /me usage elsewhere in the app.
-  useEffect(() => {
-    let mounted = true;
-    async function loadUser() {
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-        const apiBase = import.meta.env.VITE_API_URL || '';
-        // If no API base is configured (dev), do not attempt the network call to avoid 404 noise
-        if (!apiBase) return;
-        const res = await fetch(apiBase + '/me', { headers: { Authorization: `Bearer ${token}` } });
-        if (!res.ok) return;
-        const json = await res.json();
-        if (mounted && json) setUser({ email: json.email, displayName: json.displayName });
-      } catch (e) {
-        // ignore errors (non-blocking)
-      }
-    }
-    loadUser();
-    return () => { mounted = false; };
-  }, []);
+  const navItems = [
+    { path: '/', label: 'Home' },
+    { path: '/tools', label: 'Tools' },
+    { path: '/about', label: 'About' },
+    { path: '/faq', label: 'FAQ' },
+  ];
 
   return (
-    <header role="banner"
+    <header
       className={`fixed inset-x-0 top-0 z-50 transition-all ${scrolled
-        ? "backdrop-blur bg-white/70 dark:bg-slate-900/60 border-b border-slate-200/60 dark:border-slate-700/60"
-        : "bg-transparent"
+        ? "backdrop-blur bg-white/80 border-b border-slate-200"
+        : "bg-white"
         }`}
     >
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        <Link
-          to="/"
-          aria-label={`${currentBrand?.name || 'GenFabTools'} — Home`}
-          className="flex items-center gap-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-300 dark:focus-visible:ring-white/30 rounded p-1 sm:p-2"
-          style={{ minWidth: 44, minHeight: 44 }}
-        >
-          {/* Logo - consistent height for visual alignment */}
+      <div className="mx-auto max-w-7xl px-6 h-16 flex items-center justify-between">
+
+        {/* LOGO + BRAND */}
+        <Link to="/" className="flex items-center gap-3">
           <img
             src={currentBrand?.logo || GenFabLogo}
-            alt={`${currentBrand?.name || 'GenFab Tools'} logo`}
-            style={{ height: HEADER_LOGO_HEIGHT, width: 'auto' }}
+            alt="GenFabTools logo"
+            style={{ height: 28 }}
           />
 
-          {/* Short wordmark */}
-          <span className="font-semibold tracking-tight text-slate-900 dark:text-slate-100 text-lg sm:text-xl md:text-2xl">
-            GFT
+          {/* FULL NAME (FIXED) */}
+          <span className="font-semibold text-lg text-slate-900">
+            GenFabTools
           </span>
         </Link>
 
-        <nav className="hidden md:flex items-center gap-12 md:gap-16">
-          {/** Inline nav with pill-like links, consistent spacing */}
-          {['/', '/tools', '/about', '/faq'].map((path) => {
-            // Label generation for nav items (special-case FAQ -> all-caps)
-            let label;
-            if (path === '/') label = 'Home';
-            else if (path === '/faq') label = 'FAQ';
-            else label = path.replace('/', '').charAt(0).toUpperCase() + path.replace('/', '').slice(1) || 'Home';
+        {/* NAV */}
+        <nav className="hidden md:flex items-center gap-8">
+
+          {navItems.map((item) => {
+            // 🚨 HIDE CURRENT PAGE (FIX)
+            if (location.pathname.startsWith(item.path) && item.path !== '/') return null;
+
             return (
               <NavLink
-                key={path}
-                to={path}
-                className={({ isActive }) =>
-                  // Active: show dark text on light header and white text on dark header
-                  `inline-flex items-center px-6 py-2 rounded-sm text-sm font-medium transition-colors duration-150 ${isActive ? 'bg-white/12 dark:bg-slate-800 text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white'}`
-                }
+                key={item.path}
+                to={item.path}
+                className="text-sm font-medium text-slate-600 hover:text-black transition"
               >
-                {label}
+                {item.label}
               </NavLink>
             );
           })}
 
-          {/* If signed in, show a compact user indicator */}
-          {user && (
-            <div className="hidden md:flex items-center gap-3 text-sm text-slate-600 dark:text-slate-300">
-              <span className="whitespace-nowrap">Signed in as</span>
-              <Link to="/account" className="font-medium text-slate-900 dark:text-white truncate max-w-[10rem]">
-                {user.displayName || user.email}
-              </Link>
-            </div>
-          )}
-
-          {/* Primary CTA (Get Started) - prominent, high-contrast */}
+          {/* CTA BUTTON (VISIBLE FIX) */}
           <Link
             to="/register"
-            aria-label="Get started - create an account"
-            className="min-w-[120px] inline-flex items-center justify-center rounded-full bg-white/10 dark:bg-white/6 backdrop-blur-sm border border-white/20 dark:border-slate-700/30 px-5 py-2.5 text-sm font-semibold text-white dark:text-slate-900 shadow-sm z-50 hover:bg-white/30 dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-300 dark:focus-visible:ring-white/30"
+            className="ml-4 px-5 py-2 rounded-md bg-black text-white text-sm font-semibold hover:bg-gray-800"
           >
             Get Started
           </Link>
+
         </nav>
 
-        {/* Mobile */}
+        {/* MOBILE */}
         <button
           onClick={onToggleMenu}
-          className="md:hidden inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300/70 dark:border-slate-600/70"
-          aria-label="Open menu"
+          className="md:hidden p-2 border rounded-md"
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" className="text-slate-800 dark:text-slate-100">
-            <path stroke="currentColor" strokeWidth="2" strokeLinecap="round" d="M4 7h16M4 12h16M4 17h16" />
-          </svg>
+          ☰
         </button>
+
       </div>
     </header>
   );
@@ -201,28 +164,20 @@ function MobileMenu({ open, onClose, onToggleTheme, theme }) {
             </div>
 
             <nav className="flex flex-col gap-4">
-              <Link to="/" onClick={onClose} className="text-lg font-medium">
-                Home
-              </Link>
-              {/* OccuCalc removed from mobile nav to avoid duplication in header */}
-              <Link to="/tools" onClick={onClose} className="text-lg font-medium">
-                Tools
-              </Link>
-              <Link to="/about" onClick={onClose} className="text-lg font-medium">
-                About
-              </Link>
-              <Link to="/faq" onClick={onClose} className="text-lg font-medium">
-                FAQ
-              </Link>
-              {/* Theme toggle intentionally removed for a cleaner header */}
-              <Link
-                to="/register"
-                onClick={onClose}
-                aria-label="Get started - create an account"
-                className="mt-2 inline-flex w-fit min-w-[120px] items-center justify-center rounded-full bg-white/10 dark:bg-white/6 backdrop-blur-sm border border-white/20 dark:border-slate-700/30 px-5 py-2.5 text-sm font-semibold text-white dark:text-slate-900 shadow-sm z-50 hover:bg-white/30 dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-300 dark:focus-visible:ring-white/30"
-              >
-                Get Started
-              </Link>
+              {[
+                { path: '/', label: 'Home' },
+                { path: '/tools', label: 'Tools' },
+                { path: '/about', label: 'About' },
+                { path: '/faq', label: 'FAQ' },
+              ].map((item) => {
+                if (window.location.pathname.startsWith(item.path) && item.path !== '/') return null;
+
+                return (
+                  <Link key={item.path} to={item.path} onClick={onClose} className="text-lg font-medium">
+                    {item.label}
+                  </Link>
+                );
+              })}
             </nav>
           </motion.aside>
         </>
