@@ -104,7 +104,7 @@ function Header({ scrolled, onToggleTheme, theme, currentBrand, onToggleMenu }) 
           {/* CTA BUTTON (VISIBLE FIX) */}
           <Link
             to="/register"
-            className="ml-4 px-5 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-700 transition-all shadow-sm"
+            className="ml-4 px-5 py-2 rounded-lg bg-gradient-to-r from-teal-400 via-cyan-400 to-blue-500 text-white text-sm font-semibold hover:opacity-90 transition shadow-sm"
           >
             Get Started
           </Link>
