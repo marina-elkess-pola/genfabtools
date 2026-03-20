@@ -7,7 +7,7 @@ const SAMPLE_TOOLS = [
         id: 'rsi',
         title: 'Residential Scheme Intelligence',
         description:
-            'Analyze residential layouts, diagnose inefficiencies, compare design options, and evaluate financial outcomes directly inside Autodesk Revit.',
+            'A professional Revit plugin that analyzes residential schemes, detects inefficiencies, optimizes layouts, and evaluates financial performance in seconds.',
         category: 'Revit Plugin',
         tags: ['Featured', 'Revit Plugin'],
         link: 'https://genfabtools.com/download/RSI_Setup.exe',
@@ -19,119 +19,84 @@ const SAMPLE_TOOLS = [
 
 function Tools() {
     const [query, setQuery] = useState('');
-    const [activeTags, setActiveTags] = useState([]);
     const [priceFilter, setPriceFilter] = useState('all');
 
     function scrollToTools(e) {
         if (e && e.preventDefault) e.preventDefault();
         const el = document.getElementById('tools');
         if (!el) return;
-        const headerOffset = 72;
-        const y = el.getBoundingClientRect().top + window.pageYOffset - headerOffset;
+        const y = el.getBoundingClientRect().top + window.pageYOffset - 72;
         window.scrollTo({ top: y, behavior: 'smooth' });
     }
-
-    const allTags = useMemo(() => {
-        const s = new Set();
-        SAMPLE_TOOLS.forEach(t => (t.tags || []).forEach(tag => s.add(tag)));
-        return Array.from(s);
-    }, []);
 
     const filtered = useMemo(() => {
         return SAMPLE_TOOLS.filter((t) => {
             const text = (t.title + ' ' + t.description).toLowerCase();
+
             if (query && !text.includes(query.toLowerCase())) return false;
 
-            if (activeTags.length > 0) {
-                const has = (t.tags || []).some(tag => activeTags.includes(tag));
-                if (!has) return false;
-            }
-
-            const isFree = t.price === 0;
-            const isPaid = typeof t.price === 'number' && t.price > 0;
-
-            if (priceFilter === 'free' && !isFree) return false;
-            if (priceFilter === 'paid' && !isPaid) return false;
+            if (priceFilter === 'free' && t.price !== 0) return false;
+            if (priceFilter === 'paid' && (!t.price || t.price === 0)) return false;
 
             return true;
         });
-    }, [query, activeTags, priceFilter]);
+    }, [query, priceFilter]);
 
     return (
         <div>
             {/* HERO */}
-            <header className="relative w-full py-16">
+            <header className="py-16">
                 <div className="max-w-6xl mx-auto px-6">
-                    <div className="rounded-2xl bg-white/50 backdrop-blur-lg border p-8 flex flex-col md:flex-row items-center gap-6 shadow-md">
-                        <img src={toolsLogo} alt="Tools" className="w-14 h-14" />
-
-                        <div className="flex-1 text-center md:text-left">
-                            <h1 className="text-4xl font-extrabold">Tools</h1>
-                            <p className="mt-2 text-lg text-slate-700">
-                                Practical utilities to speed your workflow.
-                            </p>
+                    <div className="rounded-2xl bg-white border p-8 flex items-center justify-between shadow-sm">
+                        <div className="flex items-center gap-4">
+                            <img src={toolsLogo} alt="Tools" className="w-12 h-12" />
+                            <div>
+                                <h1 className="text-3xl font-bold">Tools</h1>
+                                <p className="text-slate-600">
+                                    Practical utilities to speed your workflow.
+                                </p>
+                            </div>
                         </div>
 
-                        <a
-                            href="#tools"
+                        <button
                             onClick={scrollToTools}
-                            className="px-4 py-2 rounded-md border text-sm font-semibold"
+                            className="px-4 py-2 border rounded-md font-semibold"
                         >
                             Explore tools
-                        </a>
+                        </button>
                     </div>
                 </div>
             </header>
 
             {/* CONTENT */}
-            <main className="max-w-6xl mx-auto px-6 mt-8 pb-12">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <main className="max-w-6xl mx-auto px-6 pb-12">
+                <div className="grid md:grid-cols-4 gap-6">
 
                     {/* FILTERS */}
-                    <aside className="md:col-span-1">
-                        <div className="sticky top-28 bg-slate-50 rounded-xl p-4 border shadow-sm">
-                            <h4 className="font-bold">Filters</h4>
+                    <aside>
+                        <div className="bg-slate-50 p-4 rounded-xl border">
+                            <h4 className="font-bold mb-3">Filters</h4>
 
                             <input
                                 value={query}
                                 onChange={(e) => setQuery(e.target.value)}
-                                className="mt-3 w-full border px-3 py-2 rounded-md"
                                 placeholder="Search tools"
+                                className="w-full border px-3 py-2 rounded-md"
                             />
 
-                            {/* FIXED FILTER BUTTONS */}
-                            <div className="mt-4 flex flex-wrap gap-2">
-
-                                <button
-                                    onClick={() => setPriceFilter('all')}
-                                    className={`px-3 py-1 rounded-md text-sm ${priceFilter === 'all'
-                                            ? 'bg-black text-white'
-                                            : 'bg-white text-black border border-gray-300'
-                                        }`}
-                                >
-                                    All
-                                </button>
-
-                                <button
-                                    onClick={() => setPriceFilter('free')}
-                                    className={`px-3 py-1 rounded-md text-sm ${priceFilter === 'free'
-                                            ? 'bg-black text-white'
-                                            : 'bg-white text-black border border-gray-300'
-                                        }`}
-                                >
-                                    Free
-                                </button>
-
-                                <button
-                                    onClick={() => setPriceFilter('paid')}
-                                    className={`px-3 py-1 rounded-md text-sm ${priceFilter === 'paid'
-                                            ? 'bg-black text-white'
-                                            : 'bg-white text-black border border-gray-300'
-                                        }`}
-                                >
-                                    Paid
-                                </button>
-
+                            <div className="mt-4 flex gap-2">
+                                {['all', 'free', 'paid'].map((type) => (
+                                    <button
+                                        key={type}
+                                        onClick={() => setPriceFilter(type)}
+                                        className={`px-3 py-1 rounded-md text-sm ${priceFilter === type
+                                                ? 'bg-black text-white'
+                                                : 'bg-white border'
+                                            }`}
+                                    >
+                                        {type}
+                                    </button>
+                                ))}
                             </div>
                         </div>
                     </aside>
@@ -139,56 +104,66 @@ function Tools() {
                     {/* TOOLS */}
                     <section id="tools" className="md:col-span-3">
 
-                        {/* FEATURED */}
-                        <div className="mb-8 bg-white p-6 rounded-xl shadow border">
-                            <h2 className="text-2xl font-bold">
-                                Residential Scheme Intelligence
-                            </h2>
+                        {/* FEATURED TOOL */}
+                        <div className="mb-8 bg-white p-6 rounded-xl border shadow-sm flex flex-col md:flex-row gap-6 items-center">
 
-                            <p className="mt-3 text-slate-600">
-                                Analyze residential layouts directly inside Revit.
-                            </p>
+                            {/* TEXT */}
+                            <div className="flex-1">
+                                <span className="text-xs text-blue-500 font-bold uppercase">
+                                    Featured Tool
+                                </span>
 
-                            {/* FIXED BUTTONS */}
-                            <div className="mt-5 flex flex-wrap gap-3">
+                                <h2 className="text-2xl font-bold mt-2">
+                                    Residential Scheme Intelligence
+                                </h2>
 
-                                {/* Open Tool → GO TO PAGE */}
-                                <button
-                                    onClick={() => window.location.href = "/tools/rsi"}
-                                    className="bg-black text-white px-5 py-2 rounded-md font-semibold hover:bg-gray-800"
-                                >
-                                    Open Tool
-                                </button>
+                                <p className="mt-3 text-slate-600 leading-relaxed">
+                                    Analyze residential layouts, detect inefficiencies, compare design
+                                    options, and instantly evaluate financial feasibility — all directly
+                                    inside Revit.
+                                </p>
 
-                                {/* Documentation */}
-                                <a
-                                    href="https://genfabtools.com/docs/rsi/index.html"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="border border-gray-300 bg-white text-black px-5 py-2 rounded-md font-semibold hover:bg-gray-100"
-                                >
-                                    Documentation
-                                </a>
+                                <ul className="mt-4 text-sm text-slate-600 space-y-1">
+                                    <li>• Unit mix & efficiency analysis</li>
+                                    <li>• Built-up vs sellable ratio</li>
+                                    <li>• Financial feasibility insights</li>
+                                    <li>• Instant performance scoring</li>
+                                </ul>
 
-                                {/* Email */}
-                                <a
-                                    href="https://mail.google.com/mail/?view=cm&fs=1&to=support@genfabtools.com&su=RSI Early Access"
-                                    target="_blank"
-                                    className="border border-gray-300 bg-white text-black px-5 py-2 rounded-md font-semibold hover:bg-gray-100"
-                                >
-                                    Get Early Access
-                                </a>
+                                {/* BUTTONS */}
+                                <div className="mt-5 flex gap-3 flex-wrap">
 
+                                    <button
+                                        onClick={() => window.location.href = "/tools/rsi"}
+                                        className="bg-black text-white px-5 py-2 rounded-md font-semibold"
+                                    >
+                                        Open Tool
+                                    </button>
+
+                                    <a
+                                        href="https://genfabtools.com/docs/rsi/index.html"
+                                        target="_blank"
+                                        className="border px-5 py-2 rounded-md font-semibold"
+                                    >
+                                        Documentation
+                                    </a>
+
+                                </div>
                             </div>
+
+                            {/* IMAGE (VERY IMPORTANT) */}
+                            <img
+                                src="/images/rsi/efficiency-dashboard.png"
+                                alt="RSI dashboard"
+                                className="w-full md:w-64 rounded-lg shadow"
+                            />
                         </div>
 
                         {/* GRID */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {filtered
-                                .filter(t => t.id !== 'rsi')
-                                .map((t) => (
-                                    <ToolCard key={t.id} tool={t} />
-                                ))}
+                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {filtered.map((t) => (
+                                <ToolCard key={t.id} tool={t} />
+                            ))}
                         </div>
 
                     </section>
