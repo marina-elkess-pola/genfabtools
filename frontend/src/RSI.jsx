@@ -3,7 +3,11 @@ import React, { useState } from 'react';
 export default function RSI() {
     const [billing, setBilling] = useState('monthly');
 
-    const price = billing === 'monthly' ? 49 : 390;
+    const monthlyPrice = 49;
+    const yearlyPrice = 390;
+    const savings = monthlyPrice * 12 - yearlyPrice;
+
+    const price = billing === 'monthly' ? monthlyPrice : yearlyPrice;
 
     return (
         <div className="max-w-6xl mx-auto px-6 py-16">
@@ -22,12 +26,13 @@ export default function RSI() {
                     </p>
 
                     {/* PRICING TOGGLE */}
-                    <div className="mt-6 flex gap-3">
+                    <div className="mt-6 flex items-center gap-3">
+
                         <button
                             onClick={() => setBilling('monthly')}
-                            className={`px-4 py-2 rounded-md text-sm ${billing === 'monthly'
-                                ? 'bg-black text-white'
-                                : 'bg-white border'
+                            className={`px-4 py-2 rounded-md text-sm font-semibold ${billing === 'monthly'
+                                    ? 'bg-black text-white'
+                                    : 'bg-white border'
                                 }`}
                         >
                             Monthly
@@ -35,13 +40,19 @@ export default function RSI() {
 
                         <button
                             onClick={() => setBilling('yearly')}
-                            className={`px-4 py-2 rounded-md text-sm ${billing === 'yearly'
-                                ? 'bg-black text-white'
-                                : 'bg-white border'
+                            className={`px-4 py-2 rounded-md text-sm font-semibold relative ${billing === 'yearly'
+                                    ? 'bg-black text-white'
+                                    : 'bg-white border'
                                 }`}
                         >
                             Yearly
+
+                            {/* SAVE BADGE */}
+                            <span className="absolute -top-2 -right-3 bg-green-500 text-white text-[10px] px-2 py-0.5 rounded-full">
+                                Save ${savings}
+                            </span>
                         </button>
+
                     </div>
 
                     {/* PRICE */}
@@ -51,6 +62,13 @@ export default function RSI() {
                             / {billing === 'monthly' ? 'month' : 'year'}
                         </span>
                     </div>
+
+                    {/* YEARLY INFO */}
+                    {billing === 'yearly' && (
+                        <p className="text-sm text-green-600 mt-1">
+                            Equivalent to ${(yearlyPrice / 12).toFixed(0)}/month
+                        </p>
+                    )}
 
                     {/* BUTTONS */}
                     <div className="mt-6 flex gap-4 flex-wrap">
@@ -77,7 +95,7 @@ export default function RSI() {
                 {/* IMAGE */}
                 <div>
                     <img
-                        src="/images/rsi/efficiency-dashboard.png"
+                        src="/images/rsi/financial-impact-RSI.png"
                         alt="RSI Dashboard"
                         className="rounded-xl shadow-lg"
                     />

@@ -146,7 +146,7 @@ function Tools() {
                                     <a
                                         href="https://genfabtools.com/docs/rsi/index.html"
                                         target="_blank"
-                                        className="border px-5 py-2 rounded-md font-semibold"
+                                        className="border text-black px-5 py-2 rounded-md font-semibold"
                                     >
                                         Documentation
                                     </a>
