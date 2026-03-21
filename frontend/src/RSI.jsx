@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { toolsData } from '../data/toolsData';
+import { toolsData } from './data/toolsData';
 
 const rsi = toolsData.find(t => t.id === 'rsi');
 

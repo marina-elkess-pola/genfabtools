@@ -62,6 +62,9 @@ from .zone_orchestrator import (
     orchestrate_layout,
     get_zone_order,
 )
+from .circulation_loop_v2 import (
+    V2LayoutError,
+)
 from .residual_recovery import (
     # Constants
     MIN_RESIDUAL_AREA,
@@ -205,4 +208,6 @@ __all__ = [
     "create_double_loaded_angled_row",
     "get_geometry_constants",
     "calculate_angled_rows_in_depth",
+    # V2 Layout Error
+    "V2LayoutError",
 ]

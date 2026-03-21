@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\Personal\\OneDrive\\Desktop\\Marina\\pytho\\website\\occupant_calculator\\tools\\revit_addin\\OccuCalcRevit.csproj": {}
+    "C:\\Users\\Personal\\OneDrive\\Desktop\\Marina\\Companies\\GenFabTools\\platform\\tools\\revit_addin\\OccuCalcRevit.csproj": {}
   },
   "projects": {
-    "C:\\Users\\Personal\\OneDrive\\Desktop\\Marina\\pytho\\website\\occupant_calculator\\tools\\revit_addin\\OccuCalcRevit.csproj": {
+    "C:\\Users\\Personal\\OneDrive\\Desktop\\Marina\\Companies\\GenFabTools\\platform\\tools\\revit_addin\\OccuCalcRevit.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\Personal\\OneDrive\\Desktop\\Marina\\pytho\\website\\occupant_calculator\\tools\\revit_addin\\OccuCalcRevit.csproj",
+        "projectUniqueName": "C:\\Users\\Personal\\OneDrive\\Desktop\\Marina\\Companies\\GenFabTools\\platform\\tools\\revit_addin\\OccuCalcRevit.csproj",
         "projectName": "OccuCalcRevitAddin",
-        "projectPath": "C:\\Users\\Personal\\OneDrive\\Desktop\\Marina\\pytho\\website\\occupant_calculator\\tools\\revit_addin\\OccuCalcRevit.csproj",
+        "projectPath": "C:\\Users\\Personal\\OneDrive\\Desktop\\Marina\\Companies\\GenFabTools\\platform\\tools\\revit_addin\\OccuCalcRevit.csproj",
         "packagesPath": "C:\\Users\\Personal\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\Personal\\OneDrive\\Desktop\\Marina\\pytho\\website\\occupant_calculator\\tools\\revit_addin\\obj\\",
+        "outputPath": "C:\\Users\\Personal\\OneDrive\\Desktop\\Marina\\Companies\\GenFabTools\\platform\\tools\\revit_addin\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\Personal\\AppData\\Roaming\\NuGet\\NuGet.Config",

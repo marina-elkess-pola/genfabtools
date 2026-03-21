@@ -78,8 +78,10 @@ from sitefit.parking_engine.v2.circulation_loop_v2 import (
     generate_circulation_loop,
     validate_circulation_loop,
     attach_stalls_to_circulation,
+    attach_stalls_with_interior,
     AttachedStall,
     StallAttachmentResult,
+    InteriorDensificationResult,
     AISLE_WIDTH_ONE_WAY,
     AISLE_WIDTH_TWO_WAY,
 )
@@ -505,15 +507,10 @@ class ZoneOrchestrator:
         Returns:
             ZoneLayoutResult with circulation geometry and attached stalls
         """
+        # V2 ENGINE: HARD FAIL if zone is not buildable
         if not zone.is_buildable():
-            return ZoneLayoutResult(
-                zone_id=zone.id,
-                zone_name=zone.name,
-                zone_type=zone.zone_type,
-                angle_config=zone.angle_config,
-                stall_count=0,
-                area=zone.area,
-                debug_geometry={"validation_errors": ["Zone not buildable"]},
+            raise V2LayoutError(
+                f"V2 zone '{zone.id}' is not buildable for 90° parking"
             )
 
         # Get site boundary as Shapely polygon
@@ -540,67 +537,45 @@ class ZoneOrchestrator:
             circulation_mode = CirculationMode.TWO_WAY
             aisle_width = AISLE_WIDTH_TWO_WAY  # 24 ft
 
-        try:
-            # STEP 1: Generate circulation loop ONLY (FROZEN after creation)
-            circulation_loop = generate_circulation_loop(
-                site_boundary=site_shapely,
-                setbacks=setbacks,
-                aisle_width=aisle_width,
-                circulation_direction=CirculationDirection.CLOCKWISE,
-                circulation_mode=circulation_mode,
-                parking_angle=angle,
-            )
-        except V2LayoutError as e:
-            # HARD FAILURE - do NOT fallback to V1
-            print(f"[CIRCULATION-FIRST] V2 error: {e}")
-            return ZoneLayoutResult(
-                zone_id=zone.id,
-                zone_name=zone.name,
-                zone_type=zone.zone_type,
-                angle_config=zone.angle_config,
-                stall_count=0,
-                area=zone.area,
-                debug_geometry={"validation_errors": [str(e)]},
-                strategy_valid=False,
-            )
+        # STEP 1: Generate circulation loop ONLY (FROZEN after creation)
+        # V2 ENGINE: No fallback - raises V2LayoutError on failure
+        circulation_loop = generate_circulation_loop(
+            site_boundary=site_shapely,
+            setbacks=setbacks,
+            aisle_width=aisle_width,
+            circulation_direction=CirculationDirection.CLOCKWISE,
+            circulation_mode=circulation_mode,
+            parking_angle=angle,
+        )
+
+        # V2 ENGINE: HARD FAIL if circulation loop is None or invalid
+        if circulation_loop is None or not circulation_loop.is_valid:
+            raise V2LayoutError(
+                "V2 failed to generate circulation loop for 90° parking")
 
         # Validate the circulation loop
         validation_errors = validate_circulation_loop(circulation_loop)
         if validation_errors:
-            print(
-                f"[CIRCULATION-FIRST] Validation errors: {validation_errors}")
-            return ZoneLayoutResult(
-                zone_id=zone.id,
-                zone_name=zone.name,
-                zone_type=zone.zone_type,
-                angle_config=zone.angle_config,
-                stall_count=0,
-                area=zone.area,
-                debug_geometry={"validation_errors": validation_errors},
-                strategy_valid=False,
+            raise V2LayoutError(
+                f"V2 circulation loop validation failed: {'; '.join(validation_errors)}"
             )
 
-        # STEP 2: Attach stalls to frozen circulation edges
-        try:
-            stall_result = attach_stalls_to_circulation(
-                circulation=circulation_loop,
-                buildable_polygon=site_shapely,
-                angle=angle,
-                circulation_mode=circulation_mode,
-            )
-        except V2LayoutError as e:
-            # HARD FAILURE - stalls intersect circulation
-            print(f"[CIRCULATION-FIRST] Stall attachment error: {e}")
-            return ZoneLayoutResult(
-                zone_id=zone.id,
-                zone_name=zone.name,
-                zone_type=zone.zone_type,
-                angle_config=zone.angle_config,
-                stall_count=0,
-                area=zone.area,
-                debug_geometry={"validation_errors": [str(e)]},
-                strategy_valid=False,
-            )
+        # STEP 2: Attach stalls to frozen circulation edges + interior densification
+        # V2 ENGINE: No fallback - raises V2LayoutError on failure
+        stall_result, interior_result = attach_stalls_with_interior(
+            circulation=circulation_loop,
+            buildable_polygon=site_shapely,
+            angle=angle,
+            circulation_mode=circulation_mode,
+        )
+
+        # Combine perimeter and interior stalls
+        all_stalls = stall_result.stalls + interior_result.get_all_stalls()
+        total_stall_count = len(all_stalls)
+
+        # V2 ENGINE: HARD FAIL if zero stalls generated
+        if total_stall_count == 0:
+            raise V2LayoutError("V2 generated zero stalls for 90° parking")
 
         # Build debug geometry from circulation loop
         loop_dict = circulation_loop.to_dict()
@@ -621,7 +596,10 @@ class ZoneOrchestrator:
                 [list(e.start), list(e.end)]
                 for e in circulation_loop.loop_edges
             ],
-            "stall_count": stall_result.stall_count,
+            "stall_count": total_stall_count,
+            "perimeter_stalls": stall_result.stall_count,
+            "interior_stalls": interior_result.total_stalls,
+            "interior_levels": interior_result.levels_filled,
             # Loop polygon as outer + inner ring for rendering
             "loop_polygon_outer": [[c[0], c[1]] for c in outer_coords[:-1]],
             "loop_polygon_inner": [[c[0], c[1]] for c in inner_coords[:-1]] if inner_coords else [],
@@ -671,22 +649,57 @@ class ZoneOrchestrator:
             ))
 
         # Convert attached stalls to AngledStall format for rendering
+        # Include both perimeter stalls and interior stalls
         angled_stalls = []
-        for stall in stall_result.stalls:
+        for stall in all_stalls:
             coords = list(stall.polygon.exterior.coords)
-            # Get the edge this stall is attached to for direction info
-            edge = circulation_loop.loop_edges[stall.edge_index]
+
+            # Handle perimeter stalls (have valid edge_index) vs interior stalls (edge_index = -1)
+            if stall.edge_index >= 0 and stall.edge_index < len(circulation_loop.loop_edges):
+                edge = circulation_loop.loop_edges[stall.edge_index]
+                stall_aisle_dir = edge.direction
+                stall_aisle_normal = edge.normal if stall.side > 0 else (
+                    -edge.normal[0], -edge.normal[1])
+            else:
+                # Interior stalls - use default axis-aligned direction
+                stall_aisle_dir = (1.0, 0.0)
+                stall_aisle_normal = (0.0, 1.0)
 
             angled_stalls.append(AngledStall(
                 anchor=Point(stall.anchor[0], stall.anchor[1]),
                 angle=float(stall.angle),
                 direction=stall.side,
-                aisle_direction=edge.direction,
-                aisle_normal=edge.normal if stall.side > 0 else (
-                    -edge.normal[0], -edge.normal[1]),
+                aisle_direction=stall_aisle_dir,
+                aisle_normal=stall_aisle_normal,
                 polygon=Polygon([
                     Point(c[0], c[1]) for c in coords[:-1]
                 ]),
+            ))
+
+        # Add interior aisles to angled_aisles
+        for module in interior_result.modules:
+            module_aisle_coords = list(module.aisle_polygon.exterior.coords)
+            # Determine direction from centerline
+            cx_start, cy_start = module.aisle_centerline[0]
+            cx_end, cy_end = module.aisle_centerline[1]
+            length = ((cx_end - cx_start)**2 + (cy_end - cy_start)**2)**0.5
+            if length > 0:
+                interior_dx = (cx_end - cx_start) / length
+                interior_dy = (cy_end - cy_start) / length
+            else:
+                interior_dx, interior_dy = 1.0, 0.0
+
+            angled_aisles.append(AngledAisle(
+                polygon=Polygon([
+                    Point(c[0], c[1]) for c in module_aisle_coords[:-1]
+                ]),
+                centerline=Line(
+                    Point(cx_start, cy_start),
+                    Point(cx_end, cy_end),
+                ),
+                width=AISLE_WIDTH_TWO_WAY,
+                angle=parking_angle,
+                circulation=CirculationMode.TWO_WAY,
             ))
 
         return ZoneLayoutResult(
@@ -694,7 +707,7 @@ class ZoneOrchestrator:
             zone_name=zone.name,
             zone_type=zone.zone_type,
             angle_config=zone.angle_config,
-            stall_count=stall_result.stall_count,
+            stall_count=total_stall_count,
             stalls_angled=angled_stalls,
             aisles_angled=angled_aisles,
             area=zone.area,

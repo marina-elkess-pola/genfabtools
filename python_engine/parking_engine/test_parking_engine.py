@@ -388,6 +388,45 @@ def test_real_world_site():
     print(
         f"  Bays: {metrics.num_bays} ({metrics.double_loaded_bays} double-loaded)")
 
+def test_narrow_deep_site_layout():
+    from parking_engine.geometry import Rectangle
+    from parking_engine.rules import DefaultRules
+    from parking_engine.layout import generate_surface_layout
+    from parking_engine.metrics import compute_metrics
+
+    site = Rectangle(width=120.0, height=600.0)
+    rules = DefaultRules()
+
+    layout = generate_surface_layout(site, rules)
+    metrics = compute_metrics(layout)
+
+    # Assertions
+    assert metrics.total_stalls > 0
+    assert metrics.efficiency_sf_per_stall < 350
+    assert all(site.contains_polygon(stall.geometry) for stall in layout.stalls)
+    print(f"✓ Narrow deep site layout test:")
+    print(f"  Site: 120' x 600' ({site.area:,.0f} SF)")
+    print(f"  Stalls: {metrics.total_stalls}")
+
+def test_wide_shallow_site_layout():
+    from parking_engine.geometry import Rectangle
+    from parking_engine.rules import DefaultRules
+    from parking_engine.layout import generate_surface_layout
+    from parking_engine.metrics import compute_metrics
+
+    site = Rectangle(width=600.0, height=120.0)
+    rules = DefaultRules()
+
+    layout = generate_surface_layout(site, rules)
+    metrics = compute_metrics(layout)
+
+    # Assertions
+    assert metrics.total_stalls > 0
+    assert metrics.efficiency_sf_per_stall < 380
+    assert all(site.contains_polygon(stall.geometry) for stall in layout.stalls)
+    print(f"✓ Wide shallow site layout test:")
+    print(f"  Site: 600' x 120' ({site.area:,.0f} SF)")     
+    print(f"  Stalls: {metrics.total_stalls}")  
 
 def run_all_tests():
     """Run all tests."""
@@ -416,6 +455,8 @@ def run_all_tests():
         test_metrics_to_dict,
         test_layout_to_dict,
         test_real_world_site,
+        test_narrow_deep_site_layout,
+        test_wide_shallow_site_layout,
     ]
 
     passed = 0

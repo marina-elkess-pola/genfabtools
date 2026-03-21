@@ -83,6 +83,14 @@ try:
         check_circulation_connected,
         # Geometry
         Aisle60,
+        # V2 Layout Error
+        V2LayoutError,
+    )
+    # Import the single authoritative V2 entrypoint
+    from sitefit.parking_engine.v2.circulation_loop_v2 import (
+        generateParkingLayoutV2,
+        V2LayoutResult,
+        Setbacks as V2EngineSetbacks,
     )
     from sitefit.core.geometry import Point as SFPoint, Polygon as SFPolygon
     HAS_V2_ENGINE = True
@@ -364,6 +372,10 @@ class EvaluationResultSchema(BaseModel):
         0, ge=0, description="v2: Stalls recovered from residual spaces")
     circulationConnected: bool = Field(
         True, description="v2: Whether all aisles form a connected network")
+    v2Error: Optional[str] = Field(
+        None, description="v2: Error message if layout generation failed")
+    interiorDebugInfo: Optional[Dict[str, Any]] = Field(
+        None, description="v2: Debug info from interior aisle generation")
 
 
 class EvaluateResponse(BaseModel):
@@ -496,7 +508,6 @@ def schema_to_constraint_set(
 # =============================================================================
 # ENDPOINTS
 # =============================================================================
-print("🔥 BACKEND CODE VERSION: LOCAL DEV 🔥")
 
 
 @router.post("/evaluate", response_model=EvaluateResponse)
@@ -549,6 +560,8 @@ async def evaluate_parking(request: EvaluateRequest) -> EvaluateResponse:
 
         # =====================================================================
         # V2 ENGINE PATH (when useV2=true)
+        # SINGLE AUTHORITATIVE ENTRYPOINT: generateParkingLayoutV2
+        # NO V1-derived metrics, layouts, or explanations are used.
         # =====================================================================
 
         if request.useV2:
@@ -559,295 +572,153 @@ async def evaluate_parking(request: EvaluateRequest) -> EvaluateResponse:
             # v2 engine is enabled and available
             warnings.append("Using v2 engine (experimental)")
 
-            # Convert site boundary to sitefit geometry
-            sf_boundary = SFPolygon([
-                SFPoint(p.x, p.y) for p in request.siteBoundary.points
-            ])
-
-            # Map aisleDirection to v2 CirculationMode
-            # TWO_WAY → CirculationMode.TWO_WAY (bidirectional, no arrows)
-            # ONE_WAY → CirculationMode.ONE_WAY_FORWARD (default forward)
-            # CRITICAL: Angled parking (!=90°) MUST be ONE_WAY only
-            v2_circulation = CirculationMode.ONE_WAY_FORWARD
-            requested_two_way = config.aisleDirection == "TWO_WAY"
-            if requested_two_way:
-                v2_circulation = CirculationMode.TWO_WAY
+            # Convert site boundary to Shapely polygon for V2 engine
+            site_points = [(p.x, p.y) for p in request.siteBoundary.points]
+            from shapely.geometry import Polygon as ShapelyPolygon
+            shapely_boundary = ShapelyPolygon(site_points)
 
             # Build v2 setbacks from request config
-            v2_setbacks = None
+            v2_setbacks = V2EngineSetbacks.uniform(0.0)
             if setbacks_dict:
-                v2_setbacks = V2Setbacks(
+                v2_setbacks = V2EngineSetbacks(
                     north=setbacks_dict["north"],
                     south=setbacks_dict["south"],
                     east=setbacks_dict["east"],
                     west=setbacks_dict["west"],
                 )
             elif config.setback > 0:
-                # Uniform setback applies to all edges
-                v2_setbacks = V2Setbacks(
-                    north=config.setback,
-                    south=config.setback,
-                    east=config.setback,
-                    west=config.setback,
-                )
+                v2_setbacks = V2EngineSetbacks.uniform(config.setback)
 
-            # Build zones from request or create default
-            zones = []
-            if request.zones and len(request.zones) > 0:
-                for z in request.zones:
-                    zone_polygon = SFPolygon([
-                        SFPoint(p.x, p.y) for p in z.polygon.points
-                    ])
-                    zone_type = ZoneType.GENERAL if z.type == V2ZoneTypeEnum.GENERAL else ZoneType.RESERVED
-                    angle_config = AngleConfig.DEGREES_90
-                    if z.angleConfig == V2AngleConfigEnum.DEGREES_60:
-                        angle_config = AngleConfig.DEGREES_60
-                    elif z.angleConfig == V2AngleConfigEnum.DEGREES_45:
-                        angle_config = AngleConfig.DEGREES_45
-                    elif z.angleConfig == V2AngleConfigEnum.DEGREES_30:
-                        angle_config = AngleConfig.DEGREES_30
-                    zones.append(Zone(
-                        id=z.id,
-                        name=z.name,
-                        zone_type=zone_type,
-                        polygon=zone_polygon,
-                        angle_config=angle_config,
-                        circulation_mode=v2_circulation,
-                        setbacks=v2_setbacks,
-                        stall_target_min=z.stallTargetMin,
-                        stall_target_max=z.stallTargetMax,
-                    ))
-            else:
-                # Create default zone (entire site) with setbacks from config
-                default_zone = create_default_zone(sf_boundary)
-                default_zone.setbacks = v2_setbacks
-                default_zone.circulation_mode = v2_circulation
-                zones = [default_zone]
+            # DEBUG: Print V2 inputs for discrepancy investigation
+            site_bounds = shapely_boundary.bounds  # (minx, miny, maxx, maxy)
 
-            # Override angle config if allowAngledParking is set
-            if request.allowAngledParking:
-                # Determine angle from request or default to 45°
-                angle_degrees = request.angle if request.angle is not None else 45
-                if angle_degrees == 30:
-                    target_angle = AngleConfig.DEGREES_30
-                elif angle_degrees == 45:
-                    target_angle = AngleConfig.DEGREES_45
-                elif angle_degrees == 60:
-                    target_angle = AngleConfig.DEGREES_60
-                else:
-                    # Default to 45° for unsupported angles
-                    target_angle = AngleConfig.DEGREES_45
-                    warnings.append(
-                        f"Unsupported angle {angle_degrees}°, using 45°")
+            # Map aisleDirection to v2 CirculationMode
+            # V2 ENGINE: Locked to 90° which REQUIRES TWO_WAY
+            v2_circulation = CirculationMode.TWO_WAY
 
-                print(
-                    f"[V2] allowAngledParking=True, angle={angle_degrees}° -> {target_angle.value}")
-                for zone in zones:
-                    zone.angle_config = target_angle
-            else:
-                # Angled parking disabled — zones will use 90° (default)
-                print("[V2 WARNING] Angled parking disabled — defaulting to 90°")
+            # V2 ENGINE: Locked to 90° parking angle
+            parking_angle = 90
 
             # =====================================================================
-            # CRITICAL: Force ONE_WAY for angled parking (angle != 90°)
-            # Two-way angled parking is NOT allowed - stall orientation requires
-            # consistent one-way traffic flow for correct geometry.
+            # CALL generateParkingLayoutV2 — SINGLE AUTHORITATIVE ENTRYPOINT
+            # This is the ONLY function that generates V2 layouts.
+            # V2LayoutError is caught and converted to a safe empty response.
             # =====================================================================
-            for zone in zones:
-                is_angled = zone.angle_config in (
-                    AngleConfig.DEGREES_30,
-                    AngleConfig.DEGREES_45,
-                    AngleConfig.DEGREES_60,
+            print("[DEBUG] V2 ROUTE HIT")
+            print("[DEBUG] use_v2 =", request.useV2)
+            try:
+                v2_layout = generateParkingLayoutV2(
+                    site_boundary=shapely_boundary,
+                    setbacks=v2_setbacks,
+                    circulation_mode=v2_circulation,
+                    parking_angle=parking_angle,
                 )
-                if is_angled and zone.circulation_mode == CirculationMode.TWO_WAY:
-                    # Force ONE_WAY for angled parking
-                    zone.circulation_mode = CirculationMode.ONE_WAY_FORWARD
-                    if requested_two_way:
-                        warnings.append(
-                            f"Zone '{zone.name}': Two-way circulation not supported for "
-                            f"{zone.angle_config.value}° angled parking. Forced to ONE_WAY."
-                        )
-                        print(
-                            f"[V2 WARNING] Zone '{zone.name}': TWO_WAY requested for angled parking "
-                            f"({zone.angle_config.value}°) — forcing ONE_WAY"
-                        )
 
-            # Run v2 orchestrator
-            orchestrator = ZoneOrchestrator(
-                site_boundary=sf_boundary, zones=zones)
-            v2_result = orchestrator.generate()
+                # ================================================================
+                # V2 ENGINE: VALIDATION GUARDS
+                # Convert validation failures to V2LayoutError for uniform handling
+                # ================================================================
 
-            # DEBUG INSTRUMENTATION — REMOVE BEFORE PRODUCTION
-            print(
-                "[V2 BACKEND DEBUG] V2 ORCHESTRATOR RESULT",
-                {
-                    "total_stalls": v2_result.total_stalls,
-                    "zones": len(v2_result.zone_results),
-                    "has_results": len(v2_result.zone_results) > 0,
-                }
+                # GUARD 1: Zero stalls
+                if v2_layout.total_stalls == 0:
+                    raise V2LayoutError("ZERO_STALLS: No stalls generated")
+
+                # GUARD 2: Zero aisles
+                if len(v2_layout.aisles) == 0:
+                    raise V2LayoutError("ZERO_AISLES: No aisles generated")
+
+                # GUARD 3: No circulation loop
+                if v2_layout.circulation is None:
+                    raise V2LayoutError(
+                        "NO_CIRCULATION_LOOP: Circulation loop not generated")
+
+            except V2LayoutError as e:
+                # ================================================================
+                # V2LayoutError → Safe empty response (HTTP 200)
+                # Frontend receives valid JSON with error message, not HTTP 500
+                # ================================================================
+
+                empty_result = EvaluationResultSchema(
+                    scenarioId=str(uuid.uuid4()),
+                    timestamp=time.strftime(
+                        "%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    parkingResult={
+                        "type": "surface",
+                        "bays": [],
+                        "zones": [],
+                        "v2Stalls": [],
+                        "v2Aisles": [],
+                        "v2DebugGeometry": None,
+                        "metrics": {
+                            "totalStalls": 0,
+                            "standardStalls": 0,
+                            "adaStalls": 0,
+                            "totalArea": shapely_boundary.area,
+                            "parkableArea": 0,
+                            "efficiencySfPerStall": 0,
+                            "usabilityRatio": 0,
+                            "areaLostToGeometry": 0,
+                            "areaLostToGeometryPct": 0,
+                        }
+                    },
+                    constraintImpact=None,
+                    warnings=[f"V2 layout failed: {str(e)}"],
+                    v2Zones=[],
+                    angledStalls=0,
+                    residualRecovered=0,
+                    circulationConnected=False,
+                    v2Error=str(e),  # Include error message for frontend
+                )
+
+                return EvaluateResponse(
+                    success=False,
+                    result=empty_result,
+                    error=str(e),
+                )
+
+            # DEBUG INSTRUMENTATION
+
+            # Build v2 stalls response from V2LayoutResult
+            # AUDIT: all_v2_stalls is built from v2_layout.stalls (final_valid_stalls)
+            all_v2_stalls = []
+            for stall in v2_layout.stalls:
+                stall_dict = stall.to_dict()
+                all_v2_stalls.append({
+                    "id": stall_dict["id"],
+                    "geometry": stall_dict["geometry"],
+                    "stallType": "STANDARD",
+                    "bayId": "default-zone",
+                    "angle": stall_dict["angle"],
+                })
+
+            # AUDIT ASSERTION: len(all_v2_stalls) MUST equal v2_layout.total_stalls
+            assert len(all_v2_stalls) == v2_layout.total_stalls, (
+                f"AUDIT FAIL: all_v2_stalls ({len(all_v2_stalls)}) != total_stalls ({v2_layout.total_stalls})"
             )
 
-            # Collect all aisles for connectivity check
-            all_aisles = []
-            for zone_result in v2_result.zone_results:
-                if zone_result.aisles_60:
-                    all_aisles.extend(zone_result.aisles_60)
+            # Build v2 aisles response from V2LayoutResult
+            all_v2_aisles = v2_layout.aisles
 
-            # Check circulation connectivity
-            circulation_connected = check_circulation_connected(all_aisles)
+            # Build v2 zone responses (single default zone)
+            v2_zones_response = [V2ZoneResponseSchema(
+                id="default-zone",
+                name="Default",
+                type="GENERAL",
+                stallCount=v2_layout.total_stalls,
+                angledStalls=v2_layout.total_stalls,
+                area=shapely_boundary.area,
+            )]
 
-            # Perform residual recovery if enabled
-            if request.recoverResidual:
-                # Get occupied polygons from v2 result
-                occupied = []
-                for zone_result in v2_result.zone_results:
-                    for stall in zone_result.stalls_60:
-                        occupied.append(stall.polygon)
+            angled_stalls = v2_layout.total_stalls
 
-                # Get existing stalls
-                existing_stalls = []
-                for zone_result in v2_result.zone_results:
-                    existing_stalls.extend(zone_result.stalls_60)
+            # Circulation is always connected for V2 (validated in generateParkingLayoutV2)
+            circulation_connected = True
 
-                recovery_result = perform_residual_recovery(
-                    site_boundary=sf_boundary,
-                    occupied_polygons=occupied,
-                    existing_stalls=existing_stalls,
-                    recover_residual=True,
-                )
-                residual_recovered = recovery_result.total_stalls_recovered
+            # V2 ENGINE: No residual recovery in V2 path (handled internally)
+            residual_recovered = 0
 
-                # Add recovered aisles to connectivity check
-                for rr in recovery_result.recovery_results:
-                    all_aisles.extend(rr.aisles)
-
-                # Re-check connectivity with recovered aisles
-                if residual_recovered > 0:
-                    circulation_connected = check_circulation_connected(
-                        all_aisles)
-
-            # Build v2 zone responses
-            v2_zones_response = []
-            all_v2_stalls = []
-            all_v2_aisles = []
-            for zone_result in v2_result.zone_results:
-                # Determine stall count from 60° stalls, angled stalls, or bays
-                zone_angled_stalls = 0
-                if zone_result.stalls_60:
-                    zone_angled_stalls = len(zone_result.stalls_60)
-                elif zone_result.stalls_angled:
-                    zone_angled_stalls = len(zone_result.stalls_angled)
-
-                v2_zones_response.append(V2ZoneResponseSchema(
-                    id=zone_result.zone_id,
-                    name=zone_result.zone_name,
-                    type=zone_result.zone_type.value,
-                    stallCount=zone_result.stall_count,
-                    angledStalls=zone_angled_stalls,
-                    area=zone_result.area,
-                ))
-                angled_stalls += zone_angled_stalls
-
-                # Collect stall and aisle geometry for rendering
-                # Priority: stalls_60 (60°), stalls_angled (30°/45°), then bays (90°)
-                if zone_result.stalls_60 and len(zone_result.stalls_60) > 0:
-                    # 60° angled parking - use stalls_60
-                    for i, stall in enumerate(zone_result.stalls_60):
-                        all_v2_stalls.append({
-                            "id": f"stall_{zone_result.zone_id}_{i}",
-                            "geometry": {
-                                "points": [{"x": p.x, "y": p.y} for p in stall.polygon.vertices]
-                            },
-                            "stallType": "STANDARD",
-                            "bayId": zone_result.zone_id,
-                            "angle": stall.angle,
-                        })
-                    for i, aisle in enumerate(zone_result.aisles_60):
-                        # Include circulation data for frontend arrow rendering
-                        flow_dir = aisle.flow_direction
-                        all_v2_aisles.append({
-                            "id": f"aisle_{zone_result.zone_id}_{i}",
-                            "geometry": {
-                                "points": [{"x": p.x, "y": p.y} for p in aisle.polygon.vertices]
-                            },
-                            "width": aisle.width,
-                            "circulation": aisle.circulation.value,
-                            "flowDirection": {"dx": flow_dir[0], "dy": flow_dir[1]} if flow_dir else None,
-                            "centerline": {
-                                "start": {"x": aisle.centerline.start.x, "y": aisle.centerline.start.y},
-                                "end": {"x": aisle.centerline.end.x, "y": aisle.centerline.end.y},
-                            },
-                        })
-                elif zone_result.stalls_angled and len(zone_result.stalls_angled) > 0:
-                    # 30°/45° angled parking - use stalls_angled
-                    for i, stall in enumerate(zone_result.stalls_angled):
-                        all_v2_stalls.append({
-                            "id": f"stall_{zone_result.zone_id}_{i}",
-                            "geometry": {
-                                "points": [{"x": p.x, "y": p.y} for p in stall.polygon.vertices]
-                            },
-                            "stallType": "STANDARD",
-                            "bayId": zone_result.zone_id,
-                            "angle": stall.angle,
-                        })
-                    for i, aisle in enumerate(zone_result.aisles_angled):
-                        # Include circulation data for frontend arrow rendering
-                        flow_dir = aisle.flow_direction
-                        all_v2_aisles.append({
-                            "id": f"aisle_{zone_result.zone_id}_{i}",
-                            "geometry": {
-                                "points": [{"x": p.x, "y": p.y} for p in aisle.polygon.vertices]
-                            },
-                            "width": aisle.width,
-                            "circulation": aisle.circulation.value,
-                            "flowDirection": {"dx": flow_dir[0], "dy": flow_dir[1]} if flow_dir else None,
-                            "centerline": {
-                                "start": {"x": aisle.centerline.start.x, "y": aisle.centerline.start.y},
-                                "end": {"x": aisle.centerline.end.x, "y": aisle.centerline.end.y},
-                            },
-                        })
-                elif zone_result.bays and len(zone_result.bays) > 0:
-                    # 90° perpendicular parking - use bays
-                    stall_idx = 0
-                    for bay_idx, bay in enumerate(zone_result.bays):
-                        # Serialize stalls from bay
-                        for stall_poly in bay.stall_polygons:
-                            all_v2_stalls.append({
-                                "id": f"stall_{zone_result.zone_id}_{stall_idx}",
-                                "geometry": {
-                                    "points": [{"x": p.x, "y": p.y} for p in stall_poly.vertices]
-                                },
-                                "stallType": "STANDARD",
-                                "bayId": zone_result.zone_id,
-                                "angle": 90.0,  # 90° perpendicular
-                            })
-                            stall_idx += 1
-                        # Serialize aisle from bay
-                        if bay.aisle_polygon:
-                            all_v2_aisles.append({
-                                "id": f"aisle_{zone_result.zone_id}_{bay_idx}",
-                                "geometry": {
-                                    "points": [{"x": p.x, "y": p.y} for p in bay.aisle_polygon.vertices]
-                                },
-                                "width": 24.0,  # Standard 90° aisle width
-                                "circulation": "TWO_WAY",  # Default for 90° bays
-                                "flowDirection": None,
-                                "centerline": None,  # Not available for bay-based aisles
-                            })
-
-            # Assert that stalls were serialized (fail fast if v2 computed stalls but serialization failed)
-            assert len(all_v2_stalls) > 0 or v2_result.total_stalls == 0, \
-                f"V2 produced {v2_result.total_stalls} stalls but none were serialized"
-
-            # Collect debug geometry from zone results (spine polyline, aisle centerlines, stall normals)
-            v2_debug_geometry = None
-            for zone_result in v2_result.zone_results:
-                if zone_result.debug_geometry:
-                    v2_debug_geometry = zone_result.debug_geometry
-                    break  # Use first zone's debug geometry for now
-
-            # Build v2 parking result (surface only for now)
-            total_stalls = v2_result.total_stalls + residual_recovered
+            # Build v2 parking result (surface only)
+            total_stalls = v2_layout.total_stalls
             parking_result = {
                 "type": "surface",
                 "bays": [],  # v2 doesn't use bays, uses zones
@@ -855,15 +726,15 @@ async def evaluate_parking(request: EvaluateRequest) -> EvaluateResponse:
                 # v2 geometry for canvas rendering
                 "v2Stalls": all_v2_stalls,
                 "v2Aisles": all_v2_aisles,
-                # Debug geometry (spine polyline, aisle centerlines, stall normals)
-                "v2DebugGeometry": v2_debug_geometry,
+                # Debug geometry from V2 layout
+                "v2DebugGeometry": v2_layout.debug_geometry,
                 "metrics": {
                     "totalStalls": total_stalls,
                     "standardStalls": total_stalls,  # v2 doesn't track ADA separately yet
                     "adaStalls": 0,
-                    "totalArea": sf_boundary.area,
-                    "parkableArea": sf_boundary.area,
-                    "efficiencySfPerStall": sf_boundary.area / total_stalls if total_stalls > 0 else 0,
+                    "totalArea": shapely_boundary.area,
+                    "parkableArea": shapely_boundary.area,
+                    "efficiencySfPerStall": shapely_boundary.area / total_stalls if total_stalls > 0 else 0,
                     "usabilityRatio": 1.0,
                     "areaLostToGeometry": 0,
                     "areaLostToGeometryPct": 0,
@@ -875,17 +746,20 @@ async def evaluate_parking(request: EvaluateRequest) -> EvaluateResponse:
             if elapsed_ms > 1000:
                 warnings.append(f"Evaluation took {elapsed_ms:.0f}ms")
 
+            # DEBUG: Print total_stalls before returning
+
             # Build v2 result and return immediately - no fallthrough to v1
             result = EvaluationResultSchema(
                 scenarioId=str(uuid.uuid4()),
                 timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 parkingResult=parking_result,
-                constraintImpact=None,  # v2 doesn't use constraint impact yet
+                constraintImpact=None,  # v2 doesn't use constraint impact
                 warnings=warnings,
                 v2Zones=v2_zones_response,
                 angledStalls=angled_stalls,
                 residualRecovered=residual_recovered,
                 circulationConnected=circulation_connected,
+                interiorDebugInfo=v2_layout.interior_debug_info,
             )
 
             return EvaluateResponse(
@@ -896,6 +770,13 @@ async def evaluate_parking(request: EvaluateRequest) -> EvaluateResponse:
         # =====================================================================
         # V1 ENGINE PATH (legacy - must not execute when v2 is enabled)
         # =====================================================================
+        # EXPLICIT GUARD: V1 code is UNREACHABLE when useV2 === true
+        # The V2 path above returns early. This assertion catches any bugs.
+        if request.useV2:
+            raise RuntimeError(
+                "CRITICAL: V1 path reached with useV2=true. "
+                "This is a bug - V2 code path should have returned or raised."
+            )
         assert not request.useV2, "V1 path must not execute when v2 is enabled"
 
         if config.parkingType == "surface":
@@ -915,12 +796,6 @@ async def evaluate_parking(request: EvaluateRequest) -> EvaluateResponse:
                 # Debug logging
                 original_area = site_boundary.area
                 constraint_area = constraint_set.total_area
-                print(
-                    f"[Constraint Debug] Original site area: {original_area:.2f} sq ft")
-                print(
-                    f"[Constraint Debug] Total constraint area: {constraint_area:.2f} sq ft")
-                print(
-                    f"[Constraint Debug] Constraints count: {constraint_set.count}")
 
                 # Apply constraints to layout - this subtracts constraint polygons
                 # from the parkable area BEFORE generating stalls
@@ -934,10 +809,6 @@ async def evaluate_parking(request: EvaluateRequest) -> EvaluateResponse:
                 )
 
                 # Debug: net parkable area after constraint subtraction
-                print(
-                    f"[Constraint Debug] Net parkable area: {constrained_result.constrained_site_area:.2f} sq ft")
-                print(
-                    f"[Constraint Debug] Area lost to constraints: {original_area - constrained_result.constrained_site_area:.2f} sq ft")
 
                 # Extract layout from constrained result
                 layout = constrained_result.layout
@@ -968,12 +839,6 @@ async def evaluate_parking(request: EvaluateRequest) -> EvaluateResponse:
 
                     # Debug: stall count comparison
                     impact = constrained_result.constraint_impact
-                    print(
-                        f"[Constraint Debug] Unconstrained stalls: {impact.unconstrained_stalls}")
-                    print(
-                        f"[Constraint Debug] Constrained stalls: {impact.constrained_stalls}")
-                    print(
-                        f"[Constraint Debug] Stalls lost to constraints: {impact.total_stalls_lost}")
 
                     # Convert to response
                     bays = [bay_to_schema(bay, i)
@@ -1216,10 +1081,6 @@ async def export_dxf(request: ExportDxfRequest) -> Response:
     Units: Feet (world units)
     """
     # Debug: Log that endpoint was hit
-    print("[DXF Export] Endpoint hit - generating layout...")
-    print(
-        f"[DXF Export] Site boundary: {len(request.siteBoundary.points)} points")
-    print(f"[DXF Export] Parking type: {request.parkingConfig.parkingType}")
 
     if not HAS_DXF_EXPORT:
         raise HTTPException(
@@ -1258,9 +1119,6 @@ async def export_dxf(request: ExportDxfRequest) -> Response:
         # Export to DXF
         dxf_bytes = export_surface_layout_to_dxf(layout)
 
-        print(
-            f"[DXF Export] Success - {len(dxf_bytes)} bytes, {layout.total_stalls} stalls")
-
         # Return as downloadable file
         return Response(
             content=dxf_bytes,
@@ -1273,7 +1131,6 @@ async def export_dxf(request: ExportDxfRequest) -> Response:
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[DXF Export] Error: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"DXF export failed: {str(e)}"
