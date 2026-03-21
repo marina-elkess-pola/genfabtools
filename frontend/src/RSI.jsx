@@ -6,13 +6,11 @@ const rsi = toolsData.find(t => t.id === 'rsi');
 export default function RSI() {
     const [billing, setBilling] = useState('monthly');
 
-    const price =
-        billing === 'monthly'
-            ? rsi.pricing.monthly
-            : rsi.pricing.yearly;
-    const savings = rsi.pricing.monthly * 12 - rsi.pricing.yearly;
+    const monthlyPrice = 49;
+    const yearlyPrice = 390;
+    const savings = monthlyPrice * 12 - yearlyPrice;
 
-    const price = billing === 'monthly' ? rsi.pricing.monthly : rsi.pricing.yearly;
+    const price = billing === 'monthly' ? monthlyPrice : yearlyPrice;
 
     return (
         <div className="max-w-6xl mx-auto px-6 py-16">
