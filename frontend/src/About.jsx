@@ -65,11 +65,27 @@ export default function About() {
                         <h3 className="font-semibold text-slate-900">
                             Elytra (Grasshopper Plugin)
                         </h3>
-                        <p className="mt-2 text-sm text-slate-600">
-                            A computational design plugin for Grasshopper, focused on enhancing
-                            parametric workflows. Elytra has been published on Food4Rhino and GitHub,
-                            and is used within the computational design community.
+
+                        <p className="mt-2 text-sm text-slate-600 leading-relaxed">
+                            Elytra is a Grasshopper plugin developed to support computational facade design,
+                            with a focus on adaptive panel systems. It enables designers to generate and
+                            control panel geometries based on performance-driven parameters, making it easier
+                            to explore responsive facade strategies within parametric workflows.
                         </p>
+
+                        <p className="mt-2 text-sm text-slate-600 leading-relaxed">
+                            The plugin has been published on Food4Rhino and GitHub, where it has been used by
+                            designers working with generative and performance-based design approaches.
+                        </p>
+
+                        <a
+                            href="https://www.food4rhino.com/en/app/adaptive-facade-panels-elytra-adpanels"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-blue-600 font-medium hover:underline mt-2 inline-block"
+                        >
+                            View on Food4Rhino →
+                        </a>
                     </div>
 
                 </div>
