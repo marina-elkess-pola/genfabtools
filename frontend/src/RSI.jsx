@@ -78,12 +78,15 @@ export default function RSI() {
                     {/* BUTTONS */}
                     <div className="mt-6 flex gap-4 flex-wrap">
 
-                        <a href={rsi.links.download} className="bg-black text-white px-6 py-3 rounded-md font-semibold hover:bg-gray-800">
+                        <a
+                            href="https://genfabtools.com/download/RSI_Setup.exe"
+                            className="bg-black text-white px-6 py-3 rounded-md font-semibold hover:bg-gray-800"
+                        >
                             Download Tool
                         </a>
 
                         <a
-                            href={rsi.links.documentation}
+                            href="https://genfabtools.com/docs/rsi/index.html"
                             target="_blank"
                             rel="noopener noreferrer"
                             className="border text-black px-6 py-3 rounded-md font-semibold hover:bg-gray-100"
