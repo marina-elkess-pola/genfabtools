@@ -1,10 +1,12 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import toolsLogo from './assets/tools-logo-black.png';
 import ToolCard from './components/ToolCard';
 import { toolsData } from './data/toolsData';
 
 
 function Tools() {
+    const navigate = useNavigate();
     const [query, setQuery] = useState('');
     const [priceFilter, setPriceFilter] = useState('all');
 
@@ -128,7 +130,7 @@ function Tools() {
                                 <div className="mt-5 flex gap-3 flex-wrap">
 
                                     <button
-                                        onClick={() => window.location.href = "/tools/rsi"}
+                                        onClick={() => { navigate('/tools/rsi'); window.scrollTo(0, 0); }}
                                         className="bg-black text-white px-5 py-2 rounded-md font-semibold"
                                     >
                                         Open Tool

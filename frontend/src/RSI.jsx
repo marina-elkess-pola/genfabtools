@@ -93,8 +93,8 @@ export default function RSI() {
 
                     {/* Subtitle */}
                     <p className="mt-6 max-w-2xl mx-auto text-lg md:text-xl text-slate-300 leading-relaxed">
-                        Analyze residential layouts, diagnose inefficiencies, and compare design
-                        schemes directly inside Revit.
+                        Stop spending hours in spreadsheets. Get live efficiency scoring,
+                        financial feasibility, and scheme comparison — directly inside Revit.
                     </p>
 
                     {/* Feature pills */}
@@ -173,6 +173,123 @@ export default function RSI() {
                 </div>
             </section>
 
+            {/* ── BEFORE vs AFTER ── */}
+            <section className="bg-slate-950 py-24">
+                <div className="max-w-5xl mx-auto px-6">
+                    <div className="text-center mb-14">
+                        <h2 className="text-3xl font-extrabold text-white">
+                            The old way vs. RSI
+                        </h2>
+                        <p className="mt-3 text-slate-400 max-w-xl mx-auto">
+                            What it actually looks like to evaluate a residential scheme without RSI.
+                        </p>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-8">
+                        {/* WITHOUT */}
+                        <div className="rounded-2xl border border-red-500/20 bg-red-950/20 p-8">
+                            <div className="flex items-center gap-2 mb-6">
+                                <svg className="w-6 h-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                                <h3 className="text-lg font-bold text-red-300">Without RSI</h3>
+                            </div>
+                            <ul className="space-y-4 text-sm text-slate-300">
+                                {[
+                                    'Export area schedules from Revit to Excel',
+                                    'Manually tag net, core, and circulation areas',
+                                    'Calculate efficiency ratios by hand',
+                                    'Google industry benchmarks to compare against',
+                                    'Build a separate financial spreadsheet',
+                                    'Repeat everything for each design option',
+                                    'Manually create comparison reports',
+                                ].map((item, i) => (
+                                    <li key={i} className="flex items-start gap-3">
+                                        <span className="shrink-0 mt-0.5 w-5 h-5 rounded-full bg-red-500/20 flex items-center justify-center text-red-400 text-xs">✕</span>
+                                        {item}
+                                    </li>
+                                ))}
+                            </ul>
+                            <div className="mt-8 pt-6 border-t border-red-500/20">
+                                <p className="text-2xl font-bold text-red-300">2–4 hours</p>
+                                <p className="text-sm text-slate-400 mt-1">per scheme iteration, every time the design changes</p>
+                            </div>
+                        </div>
+
+                        {/* WITH RSI */}
+                        <div className="rounded-2xl border border-green-500/20 bg-green-950/20 p-8">
+                            <div className="flex items-center gap-2 mb-6">
+                                <svg className="w-6 h-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                </svg>
+                                <h3 className="text-lg font-bold text-green-300">With RSI</h3>
+                            </div>
+                            <ul className="space-y-4 text-sm text-slate-300">
+                                {[
+                                    'Click "Analyze" — results appear in seconds',
+                                    'Areas auto-classified from your Revit model',
+                                    'Efficiency, benchmarks, and heatmaps — live',
+                                    'Financial impact calculated instantly',
+                                    'Compare schemes with one click',
+                                    'Results update every time you modify the design',
+                                    'Export-ready reports built in',
+                                ].map((item, i) => (
+                                    <li key={i} className="flex items-start gap-3">
+                                        <span className="shrink-0 mt-0.5 w-5 h-5 rounded-full bg-green-500/20 flex items-center justify-center text-green-400 text-xs">✓</span>
+                                        {item}
+                                    </li>
+                                ))}
+                            </ul>
+                            <div className="mt-8 pt-6 border-t border-green-500/20">
+                                <p className="text-2xl font-bold text-green-300">Under 10 seconds</p>
+                                <p className="text-sm text-slate-400 mt-1">and it recalculates automatically as you design</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* ── ROI STATS ── */}
+            <section className="py-24">
+                <div className="max-w-5xl mx-auto px-6">
+                    <div className="text-center mb-14">
+                        <h2 className="text-3xl font-extrabold text-slate-900">
+                            $49/month pays for itself on day one
+                        </h2>
+                        <p className="mt-3 text-slate-500 max-w-2xl mx-auto">
+                            A single hour of an architect's time costs more than a month of RSI.
+                            Here's the math.
+                        </p>
+                    </div>
+
+                    <div className="grid sm:grid-cols-3 gap-8 text-center">
+                        {[
+                            {
+                                stat: '10×',
+                                label: 'Faster analysis',
+                                desc: 'What takes 2–4 hours manually runs in seconds inside Revit.',
+                            },
+                            {
+                                stat: '2%+',
+                                label: 'Efficiency gains found',
+                                desc: 'Even a small improvement on a 10,000 ft² scheme can shift revenue by millions.',
+                            },
+                            {
+                                stat: '$49',
+                                label: 'vs. $150+/hr architect time',
+                                desc: 'Less than 20 minutes of billable time to save hours every week.',
+                            },
+                        ].map((s, i) => (
+                            <div key={i} className="p-8 rounded-2xl border border-slate-200 bg-white">
+                                <p className="text-4xl font-extrabold text-blue-600">{s.stat}</p>
+                                <p className="mt-2 font-bold text-slate-900">{s.label}</p>
+                                <p className="mt-2 text-sm text-slate-500 leading-relaxed">{s.desc}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
             {/* ── SCREENSHOTS ── */}
             <section className="bg-slate-50 py-24">
                 <div className="max-w-5xl mx-auto px-6">
@@ -224,70 +341,118 @@ export default function RSI() {
             </section>
 
             {/* ── PRICING ── */}
-            <section className="max-w-5xl mx-auto px-6 py-24">
-                <div className="text-center mb-12">
-                    <h2 className="text-3xl font-extrabold text-slate-900">Simple, transparent pricing</h2>
-                    <p className="mt-3 text-slate-500">One tool. One plan. No hidden fees.</p>
+            <section className="py-24">
+                <div className="max-w-5xl mx-auto px-6">
+                    <div className="text-center mb-12">
+                        <h2 className="text-3xl font-extrabold text-slate-900">Simple, transparent pricing</h2>
+                        <p className="mt-3 text-slate-500">One tool. One plan. No hidden fees.</p>
+                    </div>
+
+                    <div className="max-w-md mx-auto rounded-2xl border border-slate-200 p-8 shadow-sm">
+
+                        {/* Toggle */}
+                        <div className="flex items-center justify-center gap-3 mb-8">
+                            <button
+                                onClick={() => setBilling('monthly')}
+                                className={`px-5 py-2 rounded-lg text-sm font-semibold transition ${billing === 'monthly'
+                                    ? 'bg-slate-900 text-white shadow'
+                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                    }`}
+                            >
+                                Monthly
+                            </button>
+                            <button
+                                onClick={() => setBilling('yearly')}
+                                className={`px-5 py-2 rounded-lg text-sm font-semibold transition relative ${billing === 'yearly'
+                                    ? 'bg-slate-900 text-white shadow'
+                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                    }`}
+                            >
+                                Yearly
+                                <span className="absolute -top-2.5 -right-4 bg-green-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
+                                    Save ${savings}
+                                </span>
+                            </button>
+                        </div>
+
+                        {/* Price */}
+                        <div className="text-center">
+                            <span className="text-5xl font-extrabold text-slate-900">${price}</span>
+                            <span className="text-slate-500 ml-2">/ {billing === 'monthly' ? 'month' : 'year'}</span>
+                        </div>
+
+                        {billing === 'yearly' && (
+                            <p className="text-center text-sm text-green-600 mt-2 font-medium">
+                                That's ${(yearlyPrice / 12).toFixed(0)}/month — billed annually
+                            </p>
+                        )}
+
+                        {/* Features checklist */}
+                        <ul className="mt-8 space-y-3">
+                            {rsi.features.map((f, i) => (
+                                <li key={i} className="flex items-start gap-3 text-sm text-slate-700">
+                                    <svg className="w-5 h-5 text-green-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                    </svg>
+                                    {f}
+                                </li>
+                            ))}
+                        </ul>
+
+                        {/* CTA */}
+                        <a
+                            href={rsi.links.download}
+                            className="mt-8 block w-full text-center px-6 py-3.5 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition shadow"
+                        >
+                            Download RSI
+                        </a>
+                    </div>
                 </div>
+            </section>
 
-                <div className="max-w-md mx-auto rounded-2xl border border-slate-200 p-8 shadow-sm">
-
-                    {/* Toggle */}
-                    <div className="flex items-center justify-center gap-3 mb-8">
-                        <button
-                            onClick={() => setBilling('monthly')}
-                            className={`px-5 py-2 rounded-lg text-sm font-semibold transition ${billing === 'monthly'
-                                ? 'bg-slate-900 text-white shadow'
-                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                }`}
-                        >
-                            Monthly
-                        </button>
-                        <button
-                            onClick={() => setBilling('yearly')}
-                            className={`px-5 py-2 rounded-lg text-sm font-semibold transition relative ${billing === 'yearly'
-                                ? 'bg-slate-900 text-white shadow'
-                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                }`}
-                        >
-                            Yearly
-                            <span className="absolute -top-2.5 -right-4 bg-green-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
-                                Save ${savings}
-                            </span>
-                        </button>
+            {/* ── FAQ ── */}
+            <section className="bg-slate-50 py-24">
+                <div className="max-w-3xl mx-auto px-6">
+                    <div className="text-center mb-14">
+                        <h2 className="text-3xl font-extrabold text-slate-900">Frequently asked questions</h2>
                     </div>
 
-                    {/* Price */}
-                    <div className="text-center">
-                        <span className="text-5xl font-extrabold text-slate-900">${price}</span>
-                        <span className="text-slate-500 ml-2">/ {billing === 'monthly' ? 'month' : 'year'}</span>
-                    </div>
-
-                    {billing === 'yearly' && (
-                        <p className="text-center text-sm text-green-600 mt-2 font-medium">
-                            That's ${(yearlyPrice / 12).toFixed(0)}/month — billed annually
-                        </p>
-                    )}
-
-                    {/* Features checklist */}
-                    <ul className="mt-8 space-y-3">
-                        {rsi.features.map((f, i) => (
-                            <li key={i} className="flex items-start gap-3 text-sm text-slate-700">
-                                <svg className="w-5 h-5 text-green-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                                </svg>
-                                {f}
-                            </li>
+                    <div className="space-y-6">
+                        {[
+                            {
+                                q: 'Can\'t I just do this in Excel for free?',
+                                a: 'You can — and most architects do. But it means exporting area schedules, manually tagging spaces, building formulas, finding benchmarks online, and rebuilding everything when the design changes. RSI does all of that in seconds, live inside Revit, with zero context-switching.',
+                            },
+                            {
+                                q: 'Is $49/month worth it for a single tool?',
+                                a: 'An architect billing at $100–200/hr spends 2–4 hours per scheme doing this manually. RSI pays for itself in a single use. On a typical project with 3–5 iterations, it saves 10–20 hours per month.',
+                            },
+                            {
+                                q: 'What if my project only has one scheme?',
+                                a: 'Even with one scheme, RSI gives you instant benchmarking, heatmap diagnostics, and financial feasibility that would take hours to assemble manually. And the moment you test a second option, the comparison tools make the value obvious.',
+                            },
+                            {
+                                q: 'Do I need an internet connection?',
+                                a: 'RSI runs entirely inside Revit on your local machine. No cloud dependency, no data leaves your computer.',
+                            },
+                            {
+                                q: 'Can I cancel anytime?',
+                                a: 'Yes. Monthly plans cancel anytime with no penalties. Annual plans are billed upfront and valid for 12 months.',
+                            },
+                        ].map((faq, i) => (
+                            <details key={i} className="group rounded-xl border border-slate-200 bg-white overflow-hidden">
+                                <summary className="flex items-center justify-between cursor-pointer p-6 font-semibold text-slate-900 hover:bg-slate-50 transition">
+                                    {faq.q}
+                                    <svg className="w-5 h-5 text-slate-400 shrink-0 ml-4 group-open:rotate-180 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                                    </svg>
+                                </summary>
+                                <div className="px-6 pb-6 text-sm text-slate-600 leading-relaxed">
+                                    {faq.a}
+                                </div>
+                            </details>
                         ))}
-                    </ul>
-
-                    {/* CTA */}
-                    <a
-                        href={rsi.links.download}
-                        className="mt-8 block w-full text-center px-6 py-3.5 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition shadow"
-                    >
-                        Download RSI
-                    </a>
+                    </div>
                 </div>
             </section>
 
