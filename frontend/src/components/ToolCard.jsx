@@ -5,7 +5,7 @@ export default function ToolCard({ tool }) {
   const navigate = useNavigate();
 
   // Billing state
-  const [billing, setBilling] = useState('month');
+  const [billing, setBilling] = useState('monthly');
 
   // Pricing logic
   const price = billing === 'monthly'
