@@ -23,13 +23,11 @@ function Tools() {
             if (query && !text.includes(query.toLowerCase())) return false;
 
             const isFree =
-                t.price === 0 ||
-                t.priceMonthly === 0;
+                !t.pricing?.monthly && !t.pricing?.yearly;
 
             const isPaid =
-                (typeof t.price === 'number' && t.price > 0) ||
-                (typeof t.priceMonthly === 'number' && t.priceMonthly > 0) ||
-                (typeof t.priceYearly === 'number' && t.priceYearly > 0);
+                (t.pricing?.monthly > 0) ||
+                (t.pricing?.yearly > 0);
 
             if (priceFilter === 'free' && !isFree) return false;
             if (priceFilter === 'paid' && !isPaid) return false;

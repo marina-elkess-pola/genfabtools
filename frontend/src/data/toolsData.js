@@ -27,6 +27,6 @@ export const toolsData = [
             docs: 'https://genfabtools.com/docs/rsi/index.html',
         },
 
-        image: '/images/rsi/efficiency-dashboard.png',
+        image: '/images/rsi/RSI1080.png',
     },
 ];

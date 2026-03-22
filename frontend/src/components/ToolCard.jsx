@@ -9,8 +9,8 @@ export default function ToolCard({ tool }) {
 
   // Pricing logic
   const price = billing === 'monthly'
-    ? tool.pricing.monthly
-    : tool.pricing.yearly;
+    ? tool.pricing?.monthly
+    : tool.pricing?.yearly;
 
   return (
     <div className="bg-white rounded-2xl shadow-sm w-full flex flex-col h-full min-h-[460px] hover:-translate-y-1 hover:shadow-lg transition-all duration-300 overflow-hidden">
@@ -56,7 +56,7 @@ export default function ToolCard({ tool }) {
       {/* FOOTER */}
       <div className="mt-auto p-6 border-t border-slate-100">
 
-        {tool.priceMonthly ? (
+        {tool.pricing?.monthly ? (
           <>
             {/* PRICE + TOGGLE */}
             <div className="flex items-center justify-between mb-3">
@@ -73,8 +73,8 @@ export default function ToolCard({ tool }) {
                 onChange={(e) => setBilling(e.target.value)}
                 className="border rounded-md px-2 py-1 text-sm"
               >
-                <option value="month">month</option>
-                <option value="year">year</option>
+                <option value="monthly">Monthly</option>
+                <option value="yearly">Yearly</option>
               </select>
             </div>
 
@@ -96,17 +96,15 @@ export default function ToolCard({ tool }) {
           </>
         ) : (
           <>
-            {/* EARLY ACCESS */}
+            {/* OPEN TOOL (free) */}
             <button
-              onClick={() =>
-                window.open(
-                  'https://mail.google.com/mail/?view=cm&fs=1&to=support@genfabtools.com&su=RSI Early Access',
-                  '_blank'
-                )
-              }
-              className="w-full rounded-md bg-slate-900 text-black px-4 py-2 text-sm font-semibold hover:bg-slate-800"
+              onClick={() => {
+                navigate(`/tools/${tool.id}`);
+                window.scrollTo(0, 0);
+              }}
+              className="w-full rounded-md bg-slate-900 text-white px-4 py-2 text-sm font-semibold hover:bg-slate-800"
             >
-              Get Early Access
+              Open Tool
             </button>
           </>
         )}
