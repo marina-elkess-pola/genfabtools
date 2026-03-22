@@ -136,11 +136,11 @@ export default function RSI() {
             </section>
 
             {/* ── PRODUCT SCREENSHOT ── */}
-            <section className="relative -mt-12 z-10 max-w-5xl mx-auto px-6">
-                <div className="rounded-2xl overflow-hidden shadow-2xl border border-slate-200">
+            <section className="relative -mt-12 z-10 max-w-6xl mx-auto px-6">
+                <div className="rounded-2xl overflow-hidden shadow-2xl border border-slate-200 bg-slate-900">
                     <img
-                        src="/images/rsi/efficiency-dashboard-heatmap.png"
-                        alt="RSI efficiency dashboard with heatmap overlay"
+                        src="/images/rsi/project00.png"
+                        alt="RSI running inside Revit — floor plan with live efficiency analysis"
                         className="w-full"
                     />
                 </div>
@@ -183,17 +183,17 @@ export default function RSI() {
 
                     <div className="grid md:grid-cols-2 gap-8">
                         <div className="rounded-xl overflow-hidden shadow-lg border border-slate-200">
-                            <img src="/images/rsi/financial-impact-RSI.png" alt="Financial impact analysis" className="w-full" />
+                            <img src="/images/rsi/efficiency-dashboard.png" alt="Efficiency dashboard" className="w-full" />
                             <div className="p-4 bg-white">
-                                <p className="text-sm font-semibold text-slate-800">Financial Impact</p>
-                                <p className="text-xs text-slate-500 mt-1">Revenue estimation and pricing sensitivity per scheme.</p>
+                                <p className="text-sm font-semibold text-slate-800">Efficiency Dashboard</p>
+                                <p className="text-xs text-slate-500 mt-1">83% net-to-gross efficiency with space composition breakdown.</p>
                             </div>
                         </div>
                         <div className="rounded-xl overflow-hidden shadow-lg border border-slate-200">
-                            <img src="/images/rsi/scheme-comparison.png" alt="Scheme comparison" className="w-full" />
+                            <img src="/images/rsi/decision-summary.png" alt="Decision summary comparison" className="w-full" />
                             <div className="p-4 bg-white">
-                                <p className="text-sm font-semibold text-slate-800">Scheme Comparison</p>
-                                <p className="text-xs text-slate-500 mt-1">Side-by-side performance of different design options.</p>
+                                <p className="text-sm font-semibold text-slate-800">Decision Summary</p>
+                                <p className="text-xs text-slate-500 mt-1">Compare schemes and see revenue impact instantly.</p>
                             </div>
                         </div>
                     </div>
@@ -214,8 +214,8 @@ export default function RSI() {
                         <button
                             onClick={() => setBilling('monthly')}
                             className={`px-5 py-2 rounded-lg text-sm font-semibold transition ${billing === 'monthly'
-                                    ? 'bg-slate-900 text-white shadow'
-                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                ? 'bg-slate-900 text-white shadow'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                                 }`}
                         >
                             Monthly
@@ -223,8 +223,8 @@ export default function RSI() {
                         <button
                             onClick={() => setBilling('yearly')}
                             className={`px-5 py-2 rounded-lg text-sm font-semibold transition relative ${billing === 'yearly'
-                                    ? 'bg-slate-900 text-white shadow'
-                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                ? 'bg-slate-900 text-white shadow'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                                 }`}
                         >
                             Yearly
