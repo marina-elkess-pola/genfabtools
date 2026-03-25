@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { toolsData } from './data/toolsData';
+
+
+
 
 const rsi = toolsData.find(t => t.id === 'rsi');
 
@@ -62,11 +65,116 @@ const features = [
 
 export default function RSI() {
     const [billing, setBilling] = useState('monthly');
+    const [hasAccess, setHasAccess] = useState(null);
+    const [downloading, setDownloading] = useState(false);
+    const [downloadError, setDownloadError] = useState(null);
+
+    const verify = useCallback(async () => {
+        const token = localStorage.getItem("token");
+        if (!token) {
+            setHasAccess(false);
+            return;
+        }
+        try {
+            const apiBase = import.meta.env.VITE_API_URL || '';
+            const res = await fetch(apiBase + "/api/access", {
+                headers: { Authorization: `Bearer ${token}` },
+                credentials: 'include',
+            });
+            if (!res.ok) {
+                setHasAccess(false);
+                return;
+            }
+            const data = await res.json();
+            setHasAccess(data.access === true);
+        } catch {
+            setHasAccess(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        verify();
+
+        // Re-verify when page is restored from bfcache (back/forward)
+        const onPageShow = (e) => { if (e.persisted) verify(); };
+        window.addEventListener('pageshow', onPageShow);
+
+        // Re-verify when tab regains focus (covers alt-tab, undo scenarios)
+        const onFocus = () => verify();
+        window.addEventListener('focus', onFocus);
+
+        return () => {
+            window.removeEventListener('pageshow', onPageShow);
+            window.removeEventListener('focus', onFocus);
+        };
+    }, [verify]);
 
     const monthlyPrice = rsi.pricing.monthly;
     const yearlyPrice = rsi.pricing.yearly;
     const savings = monthlyPrice * 12 - yearlyPrice;
     const price = billing === 'monthly' ? monthlyPrice : yearlyPrice;
+
+    async function handleDownload(e) {
+        e.preventDefault();
+        setDownloadError(null);
+
+        const token = localStorage.getItem('token');
+        if (!token) {
+            localStorage.setItem('postAuthRedirect', '/tools/rsi');
+            window.location.href = '/register';
+            return;
+        }
+
+        if (hasAccess === true) {
+            // Fetch a short-lived signed download URL from the backend
+            setDownloading(true);
+            try {
+                const apiBase = import.meta.env.VITE_API_URL || '';
+                const res = await fetch(apiBase + '/api/download/rsi', {
+                    headers: { Authorization: `Bearer ${token}` },
+                    credentials: 'include',
+                });
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    setDownloadError(body.error || 'Download failed. Please try again.');
+                    return;
+                }
+                const { url } = await res.json();
+                window.location.href = url;
+            } catch {
+                setDownloadError('Network error. Please check your connection and try again.');
+            } finally {
+                setDownloading(false);
+            }
+            return;
+        }
+
+        // No access — create a purchase and redirect to checkout
+        try {
+            const apiBase = import.meta.env.VITE_API_URL || '';
+            const res = await fetch(apiBase + '/purchase/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                credentials: 'include',
+                body: JSON.stringify({ productId: 'rsi', priceId: billing }),
+            });
+            if (!res.ok) {
+                setDownloadError('Could not start purchase. Please try again.');
+                return;
+            }
+            const data = await res.json();
+            if (data.checkoutUrl) {
+                window.location.href = data.checkoutUrl;
+            } else {
+                setDownloadError('No checkout URL returned. Please contact support.');
+            }
+        } catch {
+            setDownloadError('Network error. Please check your connection and try again.');
+        }
+    }
 
     return (
         <div className="bg-white">
@@ -108,17 +216,35 @@ export default function RSI() {
                         )}
                     </div>
 
+                    {/* Trust signal */}
+                    <p className="mt-6 text-sm text-slate-500 tracking-wide">
+                        Designed &amp; tested inside real Revit projects
+                    </p>
+
                     {/* CTAs */}
+                    {downloadError && (
+                        <div className="mt-6 max-w-md mx-auto rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+                            {downloadError}
+                        </div>
+                    )}
                     <div className="mt-10 flex flex-wrap justify-center gap-4">
-                        <a
-                            href={rsi.links.download}
-                            className="inline-flex items-center gap-2 px-7 py-3.5 rounded-lg bg-blue-600 text-white font-semibold text-sm hover:bg-blue-500 transition shadow-lg shadow-blue-600/25"
+                        <button
+                            onClick={handleDownload}
+                            disabled={downloading}
+                            className="inline-flex items-center gap-2 px-7 py-3.5 rounded-lg bg-blue-600 text-white font-semibold text-sm hover:bg-blue-500 transition shadow-lg shadow-blue-600/25 disabled:opacity-60 disabled:cursor-wait"
                         >
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                            </svg>
-                            Download RSI for Revit 2024
-                        </a>
+                            {downloading ? (
+                                <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                </svg>
+                            ) : (
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                                </svg>
+                            )}
+                            {downloading ? 'Preparing download…' : 'Download RSI for Revit 2024'}
+                        </button>
 
                         <a
                             href={rsi.links.docs}
@@ -400,12 +526,13 @@ export default function RSI() {
                         </ul>
 
                         {/* CTA */}
-                        <a
-                            href={rsi.links.download}
-                            className="mt-8 block w-full text-center px-6 py-3.5 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition shadow"
+                        <button
+                            onClick={handleDownload}
+                            disabled={downloading}
+                            className="mt-8 block w-full text-center px-6 py-3.5 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition shadow disabled:opacity-60 disabled:cursor-wait"
                         >
-                            Download RSI
-                        </a>
+                            {downloading ? 'Preparing download…' : 'Download RSI'}
+                        </button>
                     </div>
                 </div>
             </section>

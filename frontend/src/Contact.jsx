@@ -21,6 +21,7 @@ export default function Contact() {
             await fetch('/api/contact', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify(form),
             });
             setStatus('sent');

@@ -17,7 +17,7 @@ export default function OccuCalc() {
             const token = localStorage.getItem('token');
             if (token) {
                 try {
-                    const res = await fetch((import.meta.env.VITE_API_URL || '') + '/me', { headers: { Authorization: `Bearer ${token}` } });
+                    const res = await fetch((import.meta.env.VITE_API_URL || '') + '/me', { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' });
                     if (res.ok) {
                         let json = null;
                         try {
@@ -57,7 +57,7 @@ export default function OccuCalc() {
         try {
             const apiBase = import.meta.env.VITE_API_URL || '';
             // refresh profile
-            const res = await fetch(apiBase + '/me', { headers: { Authorization: `Bearer ${token}` } });
+            const res = await fetch(apiBase + '/me', { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' });
             if (res.ok) {
                 const json = await res.json();
                 if (json) {
@@ -75,7 +75,7 @@ export default function OccuCalc() {
             const params = new URLSearchParams(window.location.search);
             const purchaseRef = params.get('purchaseRef');
             if (purchaseRef) {
-                const pv = await fetch(apiBase + '/purchase/verify?purchaseRef=' + encodeURIComponent(purchaseRef), { headers: { Authorization: `Bearer ${token}` } });
+                const pv = await fetch(apiBase + '/purchase/verify?purchaseRef=' + encodeURIComponent(purchaseRef), { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' });
                 if (pv.ok) {
                     const pj = await pv.json();
                     if (pj && pj.status === 'complete') {
@@ -152,6 +152,7 @@ export default function OccuCalc() {
                                                 const createRes = await fetch(apiBase + '/purchase/create', {
                                                     method: 'POST',
                                                     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                                    credentials: 'include',
                                                     body: JSON.stringify({})
                                                 });
                                                 if (!createRes.ok) throw new Error('failed to create purchase');
@@ -163,6 +164,7 @@ export default function OccuCalc() {
                                             const devRes = await fetch(apiBase + '/dev/purchase/mark-paid', {
                                                 method: 'POST',
                                                 headers: { 'Content-Type': 'application/json' },
+                                                credentials: 'include',
                                                 body: JSON.stringify({ purchaseRef })
                                             });
                                             if (!devRes.ok) throw new Error('dev mark-paid failed');

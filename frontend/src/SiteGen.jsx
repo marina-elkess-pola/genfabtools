@@ -8755,6 +8755,7 @@ export default function SiteGen() {
                 const res = await fetch('/api/sitegen/feasibility', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
                     body: JSON.stringify(requestBody),
                 });
 

@@ -964,6 +964,7 @@ export default function ParkingGenerator() {
             const res = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify(requestBody)
             });
             if (!res.ok) throw new Error(`Server error: ${res.status}`);

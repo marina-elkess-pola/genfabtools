@@ -52,7 +52,6 @@ function ImmersiveHomepage() {
                             <Link to="/" className="px-4 py-2 hover:bg-gray-200 w-full text-center">Home</Link>
                             <Link to="/tools" className="px-4 py-2 hover:bg-gray-200 w-full text-center">Tools</Link>
                             <Link to="/about" className="px-4 py-2 hover:bg-gray-200 w-full text-center">About</Link>
-                            <Link to="/occucalc" className="px-4 py-2 hover:bg-gray-200 w-full text-center">OccuCalc</Link>
                         </motion.div>
                     )}
                 </AnimatePresence>

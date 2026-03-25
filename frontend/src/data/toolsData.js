@@ -23,7 +23,6 @@ export const toolsData = [
 
         links: {
             page: '/tools/rsi',
-            download: 'https://genfabtools.com/download/RSI_Setup.exe',
             docs: 'https://genfabtools.com/docs/rsi/index.html',
         },
 

@@ -23,7 +23,8 @@ export default function PurchaseVerify() {
         async function checkOnce() {
             try {
                 const res = await fetch((import.meta.env.VITE_API_URL || '') + `/purchase/verify?purchaseRef=${encodeURIComponent(purchaseRef)}`, {
-                    headers: token ? { Authorization: `Bearer ${token}` } : {}
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                    credentials: 'include',
                 });
 
                 if (res.status === 401) {
@@ -53,10 +54,10 @@ export default function PurchaseVerify() {
                 if (json.status === 'complete') {
                     setStatus('complete');
                     setMessage('Purchase complete — thank you!');
-                    // Mark locally so OccuCalc gating can unlock immediately
+                    // Mark locally so gating can unlock immediately
                     localStorage.setItem('occuCalc.paid', '1');
-                    // short delay then navigate to occucalc
-                    setTimeout(() => navigate('/occucalc'), 1200);
+                    // short delay then navigate to account
+                    setTimeout(() => navigate('/account'), 1200);
                 } else {
                     setStatus('pending');
                     setMessage('Payment pending. Checking again soon...');

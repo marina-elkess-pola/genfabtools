@@ -30,6 +30,7 @@ export default function PurchaseButton({ productId, priceId, children }) {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
+                credentials: 'include',
                 body: JSON.stringify(body)
             });
 

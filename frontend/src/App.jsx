@@ -1,14 +1,10 @@
-﻿console.log("🔥 FRONTEND App.jsx IS LIVE 🔥");
-
-import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
+﻿import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { Routes, Route, Link } from 'react-router-dom';
 // Lazy-load heavy routes to reduce initial bundle size
 const ImmersiveHomepage = lazy(() => import('./ImmersiveHomepage'));
 const Tools = lazy(() => import('./Tools'));
 const OccuCalc = lazy(() => import('./OccuCalc'));
 const ParkCore = lazy(() => import('./ParkCore'));
-const ParkingGenerator = lazy(() => import('./ParkingGenerator'));
-const ParkingEngine = lazy(() => import('./parking-app').then(m => ({ default: m.ParkingApp })));
 const SiteGen = lazy(() => import('./SiteGen'));
 const Register = lazy(() => import('./Register'));
 const Login = lazy(() => import('./Login'));
@@ -21,6 +17,10 @@ const Account = lazy(() => import('./Account'));
 const Support = lazy(() => import('./Support'));
 const RSI = lazy(() => import('./RSI'));
 import Layout from './components/Layout';
+import ErrorBoundary from './components/ErrorBoundary';
+import { SHOW_DRAFT_TOOLS } from './config/featureFlags';
+import ProtectedRoute from './components/ProtectedRoute';
+import NotFound from './components/NotFound';
 import { useLocation } from "react-router-dom";
 
 // 🔥 SCROLL FIX COMPONENT
@@ -86,7 +86,6 @@ function HomeMain() {
           return (
             <video
               ref={videoRef}
-              src="/genfabtools-logo-animation.mp4"
               poster="/genfabtools-logo.png"
               preload="none"
               autoPlay
@@ -95,10 +94,7 @@ function HomeMain() {
               playsInline
               className="absolute inset-0 w-full h-full object-cover"
               aria-hidden="true"
-            >
-              {/* Explicit src plus <source> ensures the animation loads across environments. */}
-              <source src="/genfabtools-logo-animation.mp4" type="video/mp4" />
-            </video>
+            />
           );
         })()}
 
@@ -169,22 +165,43 @@ function HomeMain() {
             Purpose-built utilities for architecture, engineering, and site planning.
           </p>
           <div className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-            <Link to="/sitegen" className="group rounded-2xl border border-slate-200 dark:border-slate-700 p-8 text-left hover:shadow-lg transition-shadow duration-200">
-              <h3 className="text-xl font-semibold text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">SiteGen</h3>
-              <p className="mt-2 text-slate-500 dark:text-slate-400 text-sm">Automated site planning with optimized building massing and parking layouts.</p>
-            </Link>
-            <Link to="/occucalc" className="group rounded-2xl border border-slate-200 dark:border-slate-700 p-8 text-left hover:shadow-lg transition-shadow duration-200">
-              <h3 className="text-xl font-semibold text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">OccuCalc</h3>
-              <p className="mt-2 text-slate-500 dark:text-slate-400 text-sm">Occupant load calculator for architects and engineers using common code rules.</p>
-            </Link>
-            <Link to="/parkcore" className="group rounded-2xl border border-slate-200 dark:border-slate-700 p-8 text-left hover:shadow-lg transition-shadow duration-200">
-              <h3 className="text-xl font-semibold text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">ParkCore</h3>
-              <p className="mt-2 text-slate-500 dark:text-slate-400 text-sm">Generate optimized parking layouts from site boundaries with smart circulation.</p>
-            </Link>
+            {SHOW_DRAFT_TOOLS ? (
+              <>
+                <Link to="/sitegen" className="group rounded-2xl border border-slate-200 dark:border-slate-700 p-8 text-left hover:shadow-lg transition-shadow duration-200">
+                  <h3 className="text-xl font-semibold text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">SiteGen</h3>
+                  <p className="mt-2 text-slate-500 dark:text-slate-400 text-sm">Automated site planning with optimized building massing and parking layouts.</p>
+                </Link>
+                <Link to="/occucalc" className="group rounded-2xl border border-slate-200 dark:border-slate-700 p-8 text-left hover:shadow-lg transition-shadow duration-200">
+                  <h3 className="text-xl font-semibold text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">OccuCalc</h3>
+                  <p className="mt-2 text-slate-500 dark:text-slate-400 text-sm">Occupant load calculator for architects and engineers using common code rules.</p>
+                </Link>
+                <Link to="/parkcore" className="group rounded-2xl border border-slate-200 dark:border-slate-700 p-8 text-left hover:shadow-lg transition-shadow duration-200">
+                  <h3 className="text-xl font-semibold text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">ParkCore</h3>
+                  <p className="mt-2 text-slate-500 dark:text-slate-400 text-sm">Generate optimized parking layouts from site boundaries with smart circulation.</p>
+                </Link>
+              </>
+            ) : (
+              <>
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="relative rounded-2xl border border-slate-200 dark:border-slate-700 p-8 text-left select-none overflow-hidden">
+                    <div className="blur-sm pointer-events-none" aria-hidden="true">
+                      <div className="h-5 w-24 bg-slate-300 dark:bg-slate-600 rounded mb-3" />
+                      <div className="h-3 w-full bg-slate-200 dark:bg-slate-700 rounded mb-2" />
+                      <div className="h-3 w-3/4 bg-slate-200 dark:bg-slate-700 rounded" />
+                    </div>
+                    <span className="absolute inset-0 flex items-center justify-center">
+                      <span className="bg-blue-600 text-white text-xs font-semibold px-3 py-1 rounded-full tracking-wide uppercase">Coming Soon</span>
+                    </span>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
-          <div className="mt-10">
-            <Link to="/tools" className="text-blue-600 dark:text-blue-400 font-medium hover:underline">View all tools &rarr;</Link>
-          </div>
+          {SHOW_DRAFT_TOOLS && (
+            <div className="mt-10">
+              <Link to="/tools" className="text-blue-600 dark:text-blue-400 font-medium hover:underline">View all tools &rarr;</Link>
+            </div>
+          )}
         </div>
       </section>
     </div>
@@ -197,96 +214,96 @@ function App() {
       {/* ✅ THIS FIXES YOUR ISSUE */}
       <ScrollToTop />
 
-      <Routes>
-        <Route path="/" element={<HomeMain />} />
+      <ErrorBoundary>
+        <Routes>
+          <Route path="/" element={<HomeMain />} />
 
-        <Route
-          path="/immersive"
-          element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading…</div>}><ImmersiveHomepage /></Suspense></Layout>}
-        />
+          <Route
+            path="/immersive"
+            element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading…</div>}><ImmersiveHomepage /></Suspense></Layout>}
+          />
 
-        <Route
-          path="/tools"
-          element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading tools…</div>}><Tools /></Suspense></Layout>}
-        />
+          <Route
+            path="/tools"
+            element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading tools…</div>}><Tools /></Suspense></Layout>}
+          />
 
-        {/* 🔥 ADD THIS (VERY IMPORTANT) */}
-        <Route
-          path="/tools/rsi"
-          element={
-            <Layout showHero={false}>
-              <Suspense fallback={<div className="p-8 text-center">Loading…</div>}>
-                <RSI />
-              </Suspense>
-            </Layout>
-          }
-        />
+          {/* 🔥 ADD THIS (VERY IMPORTANT) */}
+          <Route
+            path="/tools/rsi"
+            element={
+              <Layout showHero={false}>
+                <Suspense fallback={<div className="p-8 text-center">Loading…</div>}>
+                  <RSI />
+                </Suspense>
+              </Layout>
+            }
+          />
 
-        <Route
-          path="/occucalc"
-          element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading OccuCalc…</div>}><OccuCalc /></Suspense></Layout>}
-        />
+          {SHOW_DRAFT_TOOLS && (
+            <Route
+              path="/occucalc"
+              element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading OccuCalc…</div>}><OccuCalc /></Suspense></Layout>}
+            />
+          )}
 
-        <Route
-          path="/parkcore"
-          element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading ParkCore…</div>}><ParkCore /></Suspense></Layout>}
-        />
+          {SHOW_DRAFT_TOOLS && (
+            <Route
+              path="/parkcore"
+              element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading ParkCore…</div>}><ParkCore /></Suspense></Layout>}
+            />
+          )}
 
-        <Route
-          path="/parking"
-          element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading Parking…</div>}><ParkingGenerator /></Suspense></Layout>}
-        />
+          {SHOW_DRAFT_TOOLS && (
+            <Route
+              path="/sitegen"
+              element={<Layout showHero={false} fullWidth={true}><Suspense fallback={<div className="p-8 text-center text-white bg-gray-950">Loading SiteGen…</div>}><SiteGen /></Suspense></Layout>}
+            />
+          )}
 
-        <Route
-          path="/parking-engine"
-          element={<Suspense fallback={<div className="p-8 text-center">Loading Parking Engine…</div>}><ParkingEngine /></Suspense>}
-        />
+          <Route
+            path="/register"
+            element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading…</div>}><Register /></Suspense></Layout>}
+          />
 
-        <Route
-          path="/sitegen"
-          element={<Layout showHero={false} fullWidth={true}><Suspense fallback={<div className="p-8 text-center text-white bg-gray-950">Loading SiteGen…</div>}><SiteGen /></Suspense></Layout>}
-        />
+          <Route
+            path="/about"
+            element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading…</div>}><About /></Suspense></Layout>}
+          />
 
-        <Route
-          path="/register"
-          element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading…</div>}><Register /></Suspense></Layout>}
-        />
+          <Route
+            path="/contact"
+            element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading…</div>}><Contact /></Suspense></Layout>}
+          />
 
-        <Route
-          path="/about"
-          element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading…</div>}><About /></Suspense></Layout>}
-        />
+          <Route
+            path="/faq"
+            element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading…</div>}><FAQ /></Suspense></Layout>}
+          />
 
-        <Route
-          path="/contact"
-          element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading…</div>}><Contact /></Suspense></Layout>}
-        />
+          <Route
+            path="/login"
+            element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading…</div>}><Login /></Suspense></Layout>}
+          />
 
-        <Route
-          path="/faq"
-          element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading…</div>}><FAQ /></Suspense></Layout>}
-        />
+          <Route
+            path="/account"
+            element={<Layout showHero={false}><ProtectedRoute><Suspense fallback={<div className="p-8 text-center">Loading account…</div>}><Account /></Suspense></ProtectedRoute></Layout>}
+          />
 
-        <Route
-          path="/login"
-          element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading…</div>}><Login /></Suspense></Layout>}
-        />
+          <Route
+            path="/purchase/verify"
+            element={<Layout showHero={false}><ProtectedRoute><Suspense fallback={<div className="p-8 text-center">Verifying…</div>}><PurchaseVerify /></Suspense></ProtectedRoute></Layout>}
+          />
 
-        <Route
-          path="/account"
-          element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading account…</div>}><Account /></Suspense></Layout>}
-        />
+          <Route
+            path="/support"
+            element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading…</div>}><Support /></Suspense></Layout>}
+          />
 
-        <Route
-          path="/purchase/verify"
-          element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Verifying…</div>}><PurchaseVerify /></Suspense></Layout>}
-        />
-
-        <Route
-          path="/support"
-          element={<Layout showHero={false}><Suspense fallback={<div className="p-8 text-center">Loading…</div>}><Support /></Suspense></Layout>}
-        />
-      </Routes>
+          <Route path="*" element={<Layout showHero={false}><NotFound /></Layout>} />
+        </Routes>
+      </ErrorBoundary>
     </>
   );
 }

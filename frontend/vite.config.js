@@ -3,8 +3,8 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 
 // https://vite.dev/config/
-export default defineConfig({
-  base: './',
+export default defineConfig(({ mode }) => ({
+  base: '/',
   // Pre-bundle some dependencies that are known to ship ESM/CJS mixes and
   // can cause runtime interop issues (helps ensure React is available when
   // framer-motion or other animation libs execute).
@@ -39,13 +39,13 @@ export default defineConfig({
       },
       // Other API requests to Node.js backend
       '/api': {
-        target: process.env.VITE_API_URL || 'http://localhost:5051',
+        target: 'http://localhost:5000',
         changeOrigin: true,
         secure: false
       }
       ,
       '/me': {
-        target: process.env.VITE_API_URL || 'http://localhost:5051',
+        target: 'http://localhost:5000',
         changeOrigin: true,
         secure: false
       }
@@ -56,7 +56,7 @@ export default defineConfig({
     format: 'es'
   },
   build: {
-    sourcemap: true, // Enable source maps for easier debugging of production errors
+    sourcemap: mode === 'development',
     // Split large vendor libraries into separate chunks to improve initial load
     rollupOptions: {
       output: {
@@ -80,5 +80,5 @@ export default defineConfig({
     },
     chunkSizeWarningLimit: 800
   }
-})
+}))
 

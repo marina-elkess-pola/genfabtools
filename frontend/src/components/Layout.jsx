@@ -52,6 +52,11 @@ function useBodyLock(open) {
 
 function Header({ scrolled, onToggleTheme, theme, currentBrand, onToggleMenu }) {
   const location = useLocation();
+  const [loggedIn, setLoggedIn] = useState(false);
+
+  useEffect(() => {
+    setLoggedIn(!!localStorage.getItem('token'));
+  }, [location]);
 
   const navItems = [
     { path: '/', label: 'Home' },
@@ -87,14 +92,13 @@ function Header({ scrolled, onToggleTheme, theme, currentBrand, onToggleMenu }) 
         <nav className="hidden md:flex items-center gap-8">
 
           {navItems.map((item) => {
-            // 🚨 HIDE CURRENT PAGE (FIX)
-            if (location.pathname.startsWith(item.path) && item.path !== '/') return null;
+            const isActive = item.path === '/' ? location.pathname === '/' : location.pathname.startsWith(item.path);
 
             return (
               <NavLink
                 key={item.path}
                 to={item.path}
-                className="text-sm font-medium text-slate-600 hover:text-black transition"
+                className={`text-sm font-medium transition ${isActive ? 'text-slate-900 font-semibold' : 'text-slate-600 hover:text-black'}`}
               >
                 {item.label}
               </NavLink>
@@ -102,12 +106,21 @@ function Header({ scrolled, onToggleTheme, theme, currentBrand, onToggleMenu }) 
           })}
 
           {/* CTA BUTTON (VISIBLE FIX) */}
-          <Link
-            to="/register"
-            className="ml-4 px-5 py-2 rounded-md bg-white text-black text-sm font-semibold hover:bg-gray-200 shadow-md transition"
-          >
-            Get Started
-          </Link>
+          {loggedIn ? (
+            <Link
+              to="/account"
+              className="ml-4 px-5 py-2 rounded-md bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 shadow-md transition"
+            >
+              Account
+            </Link>
+          ) : (
+            <Link
+              to="/register"
+              className="ml-4 px-5 py-2 rounded-md bg-white text-black text-sm font-semibold hover:bg-gray-200 shadow-md transition"
+            >
+              Get Started
+            </Link>
+          )}
 
         </nav>
 

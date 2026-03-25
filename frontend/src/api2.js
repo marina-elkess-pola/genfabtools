@@ -38,7 +38,7 @@ export async function apiFetch(path, options = {}) {
         headers.set('Authorization', 'Bearer dev-fake-token');
     }
     try {
-        const resp = await fetch(url, { ...options, headers });
+        const resp = await fetch(url, { ...options, headers, credentials: 'include' });
         if (!resp.ok) {
             const text = await resp.text().catch(() => '');
             throw new Error(`API ${resp.status} ${resp.statusText}: ${text}`);

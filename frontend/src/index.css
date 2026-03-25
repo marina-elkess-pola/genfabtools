@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Hide browser-native password reveal toggle (Edge, Chrome) */
+input::-ms-reveal,
+input::-webkit-credentials-auto-fill-button {
+  display: none;
+}
+
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.6;
